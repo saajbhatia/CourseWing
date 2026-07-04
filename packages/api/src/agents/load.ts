@@ -13,6 +13,7 @@ import type {
   Agent,
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
+import { isLearnLinkEnabled, learnLinkToolKeys } from '~/learnlink';
 import { requiresEphemeralUserConnection } from '~/mcp/utils';
 import { getCustomEndpointConfig } from '~/app/config';
 
@@ -75,6 +76,9 @@ export async function loadEphemeralAgent(
   }
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
+  }
+  if (isLearnLinkEnabled()) {
+    tools.push(...learnLinkToolKeys);
   }
 
   const addedServers = new Set<string>();

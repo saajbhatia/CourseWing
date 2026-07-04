@@ -1,4 +1,5 @@
 import { WebSearchToolDefinition, CalculatorToolDefinition } from '@librechat/agents';
+import { learnLinkToolDefinitions } from '~/learnlink/definitions';
 import { geminiToolkit } from '~/tools/toolkits/gemini';
 import { oaiToolkit } from '~/tools/toolkits/oai';
 
@@ -474,11 +475,19 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
 };
 
 export function getToolDefinition(toolName: string): ToolRegistryDefinition | undefined {
-  return toolDefinitions[toolName] ?? agentToolDefinitions[toolName];
+  return (
+    toolDefinitions[toolName] ??
+    agentToolDefinitions[toolName] ??
+    learnLinkToolDefinitions[toolName]
+  );
 }
 
 export function getAllToolDefinitions(): ToolRegistryDefinition[] {
-  return [...Object.values(toolDefinitions), ...Object.values(agentToolDefinitions)];
+  return [
+    ...Object.values(toolDefinitions),
+    ...Object.values(agentToolDefinitions),
+    ...Object.values(learnLinkToolDefinitions),
+  ];
 }
 
 export function getToolSchema(toolName: string): ExtendedJsonSchema | undefined {

@@ -41,6 +41,7 @@ export function getDisplayCourseName(name: string): string {
 export function getCoursePrefix(course: LearnLinkCourseIdentity): string {
   return [
     `Current Canvas course: ${course.name}`,
+    `Canvas course ID: ${course.canvasCourseId}`,
     course.courseCode ? `Course code: ${course.courseCode}` : '',
     'The student is chatting within this course. Ground your help in this course’s material.',
   ]

@@ -71,6 +71,8 @@ export * from './shared-links/service';
 export * from './shared-links/config';
 /* Stream */
 export * from './stream';
+/* LearnLink */
+export * from './learnlink';
 /* Diagnostics */
 export { memoryDiagnostics } from './utils/memory';
 /* RUM */

@@ -11,6 +11,7 @@ const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data
 const {
   moderateText,
   // validateModel,
+  learnLinkContext,
   validateConvoAccess,
   buildEndpointOption,
   canAccessAgentFromBody,
@@ -77,6 +78,7 @@ router.use(moderateText);
 router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);
+router.use(learnLinkContext);
 router.use(buildEndpointOption);
 
 const controller = async (req, res, next) => {

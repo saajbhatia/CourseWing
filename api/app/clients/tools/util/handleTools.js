@@ -6,6 +6,8 @@ const {
   createSafeUser,
   mcpToolPattern,
   loadWebSearchAuth,
+  createLearnLinkTool,
+  isLearnLinkToolKey,
   buildInlineMemoryTool,
   getCodeApiAuthHeaders,
   buildImageToolContext,
@@ -359,6 +361,9 @@ const loadTools = async ({
           logger,
         });
       };
+      continue;
+    } else if (isLearnLinkToolKey(tool)) {
+      requestedTools[tool] = async () => createLearnLinkTool(tool);
       continue;
     } else if (tool === SET_MEMORY_TOOL_NAME || tool === DELETE_MEMORY_TOOL_NAME) {
       requestedTools[tool] = () =>
