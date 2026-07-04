@@ -1,7 +1,8 @@
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, loadEnv } from 'vite';
 import { createRequire } from 'module';
 import { VitePWA } from 'vite-plugin-pwa';
 import { compression } from 'vite-plugin-compression2';
@@ -30,6 +31,12 @@ const NODE_POLYFILL_SHIMS: Record<string, string> = {
 };
 
 // https://vitejs.dev/config/
+/** The config is resolved before Vite loads env files, so read the root .env explicitly. */
+const rootEnv = loadEnv(
+  process.env.NODE_ENV || 'development',
+  fileURLToPath(new URL('..', import.meta.url)),
+  '',
+);
 const backendPort = (process.env.BACKEND_PORT && Number(process.env.BACKEND_PORT)) || 3080;
 const backendURL = process.env.HOST
   ? `http://${process.env.HOST}:${backendPort}`
@@ -48,7 +55,7 @@ export default defineConfig(({ command }) => ({
   server: {
     allowedHosts:
       (process.env.VITE_ALLOWED_HOSTS && process.env.VITE_ALLOWED_HOSTS.split(',')) || [],
-    host: process.env.HOST || 'localhost',
+    host: rootEnv.HOST || 'localhost',
     port: (process.env.PORT && Number(process.env.PORT)) || 3090,
     strictPort: false,
     proxy: {

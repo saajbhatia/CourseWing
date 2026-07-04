@@ -9,10 +9,9 @@ import type { LearnLinkCourseIdentity } from './utils';
 import { useCourseMaterialsQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLink';
 import {
   getDisplayCourseName,
-  getAssignmentPrompt,
-  getCourseMessagePrompt,
+  getAssignmentPrefix,
   getCourseInitial,
-  getCoursePrompt,
+  getCoursePrefix,
   getCourseColor,
   openCourseChat,
 } from './utils';
@@ -141,22 +140,26 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
   const color = getCourseColor(course.canvasCourseId);
 
   const startAssignmentChat = (assignment: LearnLinkAssignment) => {
-    openCourseChat(navigate, newConversation, course, getAssignmentPrompt(course, assignment));
+    openCourseChat(navigate, newConversation, course, {
+      promptPrefix: getAssignmentPrefix(course, assignment),
+      greeting: localize('com_ui_assignment_chat_greeting', { name: assignment.name }),
+    });
   };
 
   const startPromptChat = (text: string) => {
-    openCourseChat(navigate, newConversation, course, getCourseMessagePrompt(course, text));
+    openCourseChat(navigate, newConversation, course, {
+      promptPrefix: getCoursePrefix(course),
+      prompt: text,
+    });
   };
 
   const handleComposerSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    openCourseChat(
-      navigate,
-      newConversation,
-      course,
-      text ? getCourseMessagePrompt(course, text) : getCoursePrompt(course),
-    );
+    openCourseChat(navigate, newConversation, course, {
+      promptPrefix: getCoursePrefix(course),
+      ...(text ? { prompt: text } : { greeting: localize('com_ui_course_chat_greeting') }),
+    });
   };
 
   const tabs: Array<{ key: CourseTab; label: string }> = [

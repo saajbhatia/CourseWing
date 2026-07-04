@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useMemo, memo, lazy, Suspense, useRef } from 'react';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
 import { useMediaQuery } from '@librechat/client';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, ChevronRight, SquarePen } from 'lucide-react';
 import { Constants, PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { InfiniteQueryObserverResult } from '@tanstack/react-query';
@@ -28,6 +28,7 @@ import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
 import CoursePanel from '~/components/LearnLink/CoursePanel';
 import { Conversations } from '~/components/Conversations';
+import Convo from '~/components/Conversations/Convo';
 import SearchBar from '~/components/Nav/SearchBar';
 import { cn } from '~/utils';
 import store from '~/store';
@@ -38,7 +39,6 @@ const RECENT_CHATS_LIMIT = 4;
 
 const ConversationsSection = memo(() => {
   const localize = useLocalize();
-  const navigate = useNavigate();
   const { newConversation } = useNewConvo();
   const { courseId, conversationId } = useParams();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
@@ -182,14 +182,6 @@ const ConversationsSection = memo(() => {
     }
   }, [search.query, search.isTyping, isLoading, isFetching]);
 
-  const openConversation = useCallback(
-    (conversation: TConversation) => {
-      navigate(`/c/${conversation.conversationId}`);
-      toggleNav();
-    },
-    [navigate, toggleNav],
-  );
-
   const openNewChat = useCallback(() => {
     clearPendingCourse();
     newConversation();
@@ -282,26 +274,14 @@ const ConversationsSection = memo(() => {
                 </div>
                 {isChatsExpanded && (
                   <div className="min-h-0 overflow-y-auto">
-                    <ul className="m-0 list-none p-0">
-                      {recentConversations.map((conversation) => (
-                        <li key={conversation.conversationId} className="list-none">
-                          <button
-                            type="button"
-                            onClick={() => openConversation(conversation)}
-                            className={cn(
-                              'flex h-9 w-full min-w-0 items-center rounded-lg px-2 py-1.5 text-left text-sm text-text-primary outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white',
-                              conversation.conversationId === conversationId
-                                ? 'bg-surface-active-alt'
-                                : 'hover:bg-surface-active-alt',
-                            )}
-                          >
-                            <span className="min-w-0 flex-1 truncate leading-5">
-                              {conversation.title || localize('com_ui_untitled')}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    {recentConversations.map((conversation) => (
+                      <Convo
+                        key={conversation.conversationId}
+                        conversation={conversation}
+                        retainView={moveToTop}
+                        toggleNav={toggleNav}
+                      />
+                    ))}
                     <button
                       type="button"
                       onClick={() => setPanelPage('chats')}

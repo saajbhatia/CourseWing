@@ -38,53 +38,61 @@ export function getDisplayCourseName(name: string): string {
     .trim();
 }
 
-function getCourseContext(course: LearnLinkCourseIdentity): string {
+export function getCoursePrefix(course: LearnLinkCourseIdentity): string {
   return [
     `Current Canvas course: ${course.name}`,
     course.courseCode ? `Course code: ${course.courseCode}` : '',
+    'The student is chatting within this course. Ground your help in this course’s material.',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-export function getCoursePrompt(course: LearnLinkCourseIdentity): string {
-  return `${getCourseContext(course)}\nHelp me with this course. First ask what assignment, topic, or file I want to work on.`;
-}
-
-export function getAssignmentPrompt(
+export function getAssignmentPrefix(
   course: LearnLinkCourseIdentity,
   assignment: LearnLinkAssignment,
 ): string {
   return [
-    getCourseContext(course),
+    getCoursePrefix(course),
     `Assignment: ${assignment.name}`,
     assignment.dueAt ? `Due: ${assignment.dueAt}` : '',
-    'I want help with this assignment. First ask what part I am working on.',
+    'The student wants help with this assignment. Guide them through it rather than doing it for them.',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-export function getCourseMessagePrompt(course: LearnLinkCourseIdentity, text: string): string {
-  return `${getCourseContext(course)}\n\n${text}`;
-}
-
 export type NewConversationCall = (options?: { disableFocus?: boolean }) => void;
+
+export type CourseChatOptions = {
+  promptPrefix: string;
+  greeting?: string;
+  prompt?: string;
+};
 
 export function openCourseChat(
   navigate: NavigateFunction,
   newConversation: NewConversationCall,
   course: LearnLinkCourseIdentity,
-  prompt: string,
+  options: CourseChatOptions,
 ): void {
+  if (options.greeting) {
+    sessionStorage.setItem(PENDING_GREETING_KEY, options.greeting);
+  } else {
+    sessionStorage.removeItem(PENDING_GREETING_KEY);
+  }
   setPendingCourse(course.canvasCourseId);
   newConversation({ disableFocus: true });
-  navigate(`/c/${Constants.NEW_CONVO}?prompt=${encodeURIComponent(prompt)}`, {
-    state: { focusChat: true },
-  });
+  const params = new URLSearchParams({ promptPrefix: options.promptPrefix });
+  if (options.prompt) {
+    params.set('prompt', options.prompt);
+    params.set('submit', 'true');
+  }
+  navigate(`/c/${Constants.NEW_CONVO}?${params.toString()}`, { state: { focusChat: true } });
 }
 
 const PENDING_COURSE_KEY = 'learnlink:pendingCourse';
+const PENDING_GREETING_KEY = 'learnlink:pendingGreeting';
 const PENDING_COURSE_EVENT = 'learnlink:pending-course-changed';
 
 export function getPendingCourse(): number | null {
@@ -103,7 +111,16 @@ export function setPendingCourse(canvasCourseId: number): void {
 
 export function clearPendingCourse(): void {
   sessionStorage.removeItem(PENDING_COURSE_KEY);
+  sessionStorage.removeItem(PENDING_GREETING_KEY);
   window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
+}
+
+function getPendingGreeting(): string | null {
+  return sessionStorage.getItem(PENDING_GREETING_KEY);
+}
+
+export function usePendingGreeting(): string | null {
+  return useSyncExternalStore(subscribePendingCourse, getPendingGreeting);
 }
 
 function subscribePendingCourse(onStoreChange: () => void): () => void {

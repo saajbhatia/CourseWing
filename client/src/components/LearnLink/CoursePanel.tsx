@@ -8,7 +8,7 @@ import {
   getDisplayCourseName,
   clearPendingCourse,
   getCourseInitial,
-  getCoursePrompt,
+  getCoursePrefix,
   getCourseColor,
   openCourseChat,
 } from './utils';
@@ -67,7 +67,10 @@ export default function CoursePanel({
 
   const startChat = () => {
     if (course != null) {
-      openCourseChat(navigate, newConversation, course, getCoursePrompt(course));
+      openCourseChat(navigate, newConversation, course, {
+        promptPrefix: getCoursePrefix(course),
+        greeting: localize('com_ui_course_chat_greeting'),
+      });
       toggleNav();
     }
   };

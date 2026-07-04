@@ -12,6 +12,7 @@ import {
 } from '~/utils';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
+import { usePendingGreeting } from '~/components/LearnLink/utils';
 import AgentContact from '~/components/Agents/AgentContact';
 import ConvoIcon from '~/components/Endpoints/ConvoIcon';
 import { useLocalize, useAuthContext } from '~/hooks';
@@ -76,9 +77,11 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
 
   const brandedSpecLabel = modelSpec?.showOnLanding ? modelSpec.label : '';
   const brandedSpecDescription = (modelSpec?.showOnLanding && modelSpec.description) || '';
+  const pendingGreeting = usePendingGreeting();
   const name = entity?.name ?? brandedSpecLabel;
   const description =
-    (entity?.description || brandedSpecDescription || conversation?.greeting) ?? '';
+    (pendingGreeting || entity?.description || brandedSpecDescription || conversation?.greeting) ??
+    '';
   const descriptionIsHTML = description.trim().startsWith('<');
 
   const sanitizeDescription = useMemo(
