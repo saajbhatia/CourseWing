@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { LearnLinkAssignment, LearnLinkCourseSummary } from '~/data-provider/LearnLink';
 import { Constants } from 'librechat-data-provider';
@@ -84,6 +85,7 @@ export function openCourseChat(
 }
 
 const PENDING_COURSE_KEY = 'learnlink:pendingCourse';
+const PENDING_COURSE_EVENT = 'learnlink:pending-course-changed';
 
 export function getPendingCourse(): number | null {
   const raw = sessionStorage.getItem(PENDING_COURSE_KEY);
@@ -96,8 +98,19 @@ export function getPendingCourse(): number | null {
 
 export function setPendingCourse(canvasCourseId: number): void {
   sessionStorage.setItem(PENDING_COURSE_KEY, String(canvasCourseId));
+  window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
 }
 
 export function clearPendingCourse(): void {
   sessionStorage.removeItem(PENDING_COURSE_KEY);
+  window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
+}
+
+function subscribePendingCourse(onStoreChange: () => void): () => void {
+  window.addEventListener(PENDING_COURSE_EVENT, onStoreChange);
+  return () => window.removeEventListener(PENDING_COURSE_EVENT, onStoreChange);
+}
+
+export function usePendingCourse(): number | null {
+  return useSyncExternalStore(subscribePendingCourse, getPendingCourse);
 }

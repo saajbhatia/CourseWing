@@ -17,6 +17,7 @@ import {
 } from '~/hooks';
 import {
   getPendingCourse,
+  usePendingCourse,
   clearPendingCourse,
   iconButtonClassName,
 } from '~/components/LearnLink/utils';
@@ -106,6 +107,8 @@ const ConversationsSection = memo(() => {
     [conversations],
   );
 
+  const pendingCourseId = usePendingCourse();
+
   const activeCourseId = useMemo(() => {
     if (courseId != null) {
       const parsed = Number.parseInt(courseId, 10);
@@ -117,8 +120,8 @@ const ConversationsSection = memo(() => {
     if (conversationId !== Constants.NEW_CONVO) {
       return chatMap[conversationId] ?? null;
     }
-    return getPendingCourse();
-  }, [courseId, conversationId, chatMap]);
+    return pendingCourseId;
+  }, [courseId, conversationId, chatMap, pendingCourseId]);
 
   const submission = useRecoilValue(store.submissionByIndex(0));
 

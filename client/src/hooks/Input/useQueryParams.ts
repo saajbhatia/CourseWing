@@ -248,6 +248,11 @@ export default function useQueryParams({
       lastSearchRef.current = searchString;
       processedRef.current = false;
       attemptsRef.current = 0;
+      pendingSubmitRef.current = false;
+      settingsAppliedRef.current = false;
+      submissionHandledRef.current = false;
+      promptTextRef.current = null;
+      validSettingsRef.current = null;
     }
 
     const processQueryParams = () => {

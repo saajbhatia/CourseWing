@@ -8,6 +8,7 @@ import type { NavLink } from '~/common';
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
 import { useActivePanel, resolveActivePanel, DEFAULT_PANEL } from '~/Providers';
 import { CLOSE_SIDEBAR_ID } from '~/components/Chat/Menus/OpenSidebar';
+import { clearPendingCourse } from '~/components/LearnLink/utils';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { clearMessagesCache, cn } from '~/utils';
 import store from '~/store';
@@ -31,6 +32,7 @@ const NewChatButton = memo(function NewChatButton({
     (e: React.MouseEvent<HTMLAnchorElement>) => {
       if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
+        clearPendingCourse();
         clearMessagesCache(queryClient, conversation?.conversationId);
         queryClient.invalidateQueries([QueryKeys.messages]);
         newConversation();
