@@ -29,6 +29,7 @@ export type SectionId =
   | 'apiKeys'
   | 'danger'
   | 'profile'
+  | 'connections'
   | 'security'
   | 'billing'
   | 'about';
@@ -121,6 +122,7 @@ export const TABS: TabMeta[] = [
     icon: createElement(UserIcon),
     sections: [
       { id: 'profile', labelKey: 'com_ui_settings_section_profile' },
+      { id: 'connections', labelKey: 'com_ui_settings_section_connections' },
       { id: 'security', labelKey: 'com_ui_settings_section_security' },
       { id: 'billing', labelKey: 'com_ui_settings_section_billing' },
       { id: 'danger', labelKey: 'com_ui_settings_section_danger_zone', danger: true },

@@ -1971,5 +1971,17 @@
   "com_ui_zoom_in": "Zoom in",
   "com_ui_zoom_level": "Zoom level",
   "com_ui_zoom_out": "Zoom out",
-  "com_user_message": "You"
+  "com_user_message": "You",
+  "com_ui_settings_section_connections": "Connections",
+  "com_ui_settings_label_canvas": "Canvas account",
+  "com_ui_canvas_connect": "Connect",
+  "com_ui_canvas_disconnect": "Disconnect",
+  "com_ui_canvas_connected_as": "Connected as {{0}}",
+  "com_ui_canvas_disconnected": "Canvas account disconnected",
+  "com_ui_canvas_connect_error": "Could not connect — check the token and try again",
+  "com_ui_canvas_syncing": "Syncing your courses… {{0}} found so far. Assignments and files fill in over the next few minutes.",
+  "com_ui_canvas_sync_status": "{{0}} courses · last synced {{1}}",
+  "com_ui_canvas_token_placeholder": "Paste your Canvas access token",
+  "com_ui_canvas_domain_placeholder": "Canvas domain, e.g. yourschool.instructure.com",
+  "com_ui_canvas_token_help": "Enter your school's Canvas web address, then create a token in Canvas: Account → Settings → + New Access Token. Your courses, assignments, and grades will appear after the first sync."
 }

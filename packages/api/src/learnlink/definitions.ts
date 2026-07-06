@@ -1,6 +1,7 @@
 import type { ToolRegistryDefinition } from '~/tools/registry/definitions';
 import {
   LEARNLINK_GET_ASSIGNMENTS,
+  LEARNLINK_GET_MASTERY,
   LEARNLINK_GET_MODULES,
   LEARNLINK_READ_MATERIAL,
   LEARNLINK_SEARCH_MATERIALS,
@@ -13,7 +14,7 @@ export const learnLinkToolDefinitions: Record<string, ToolRegistryDefinition> = 
   [LEARNLINK_GET_ASSIGNMENTS]: {
     name: LEARNLINK_GET_ASSIGNMENTS,
     description:
-      "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, its grading group, and optionally full instructions with linked files. Use for questions about homework, deadlines, grades, grade weighting, or what an assignment requires.",
+      "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, and teacher feedback on the submission. Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, or how a graded assignment was scored — narrow with query to get the full rubric breakdown for one assignment.",
     schema: {
       type: 'object',
       properties: {
@@ -43,13 +44,28 @@ export const learnLinkToolDefinitions: Record<string, ToolRegistryDefinition> = 
         withDescriptions: {
           type: 'boolean',
           description:
-            'Include full assignment instructions. Use when the student needs help doing the work.',
+            'Include full assignment instructions, linked files, the grading rubric with per-criterion scores, and teacher feedback. Use when the student needs help doing the work or understanding their grade.',
         },
         limit: {
           type: 'integer',
           minimum: 1,
           maximum: 50,
           description: 'Max results, default 20.',
+        },
+      },
+    },
+    toolType: 'custom',
+  },
+  [LEARNLINK_GET_MASTERY]: {
+    name: LEARNLINK_GET_MASTERY,
+    description:
+      "Get the student's Canvas Learning Mastery gradebook: each learning outcome/standard (e.g. \"Analyzing and interpreting data\") with the student's current score, the mastery threshold, a rating on the course's scale (Exemplary/Accomplished/Developing…), how many times it was assessed, and the most recent assessment. Use for questions about learning mastery, outcomes, standards, skills, or which areas the student is strongest/weakest in. Courses without published outcomes return an empty list — then infer strengths from assignment scores instead.",
+    schema: {
+      type: 'object',
+      properties: {
+        canvasCourseId: {
+          type: 'integer',
+          description: courseIdDescription,
         },
       },
     },

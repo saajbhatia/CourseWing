@@ -49,9 +49,14 @@ export function buildCourseCard(context: LearnLinkCourseContext): string {
     }
   }
 
+  const masteryTool =
+    (context.masteryOutcomeCount ?? 0) > 0
+      ? `, learnlink_get_mastery (Learning Mastery — ${context.masteryOutcomeCount} outcomes tracked)`
+      : '';
+
   lines.push(
     `Synced materials: ${materialCounts.files} files, ${materialCounts.pages} pages, ${materialCounts.modules} modules (${materialCounts.readableMaterials} readable)${hasSyllabus ? '; syllabus posted' : ''}.`,
-    'Tools: learnlink_get_assignments (details, official grades, group weights, past work), learnlink_get_modules (syllabus + course structure), learnlink_search_materials (find content in course files/pages), learnlink_read_material (read one). Prefer this synced context over guessing.',
+    `Tools: learnlink_get_assignments (details, official grades, group weights, rubrics + teacher feedback on graded work), learnlink_get_modules (syllabus + course structure), learnlink_search_materials (find content in course files/pages), learnlink_read_material (read one)${masteryTool}. Prefer this synced context over guessing.`,
     "When the student asks for a document or link, give them the actual URL from tool results as a markdown link (canvasUrl for the material itself, or an entry from its links array). These open through the student's own school login — including Office365/SharePoint ones — so share them directly instead of describing where to click in Canvas.",
   );
 

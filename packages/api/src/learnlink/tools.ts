@@ -2,21 +2,24 @@ import { z } from 'zod';
 import { logger } from '@librechat/data-schemas';
 import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
-import { getAssignments, getModules, readMaterial, searchMaterials } from './service';
+import { getAssignments, getMastery, getModules, readMaterial, searchMaterials } from './service';
 
 export const LEARNLINK_GET_ASSIGNMENTS = 'learnlink_get_assignments';
+export const LEARNLINK_GET_MASTERY = 'learnlink_get_mastery';
 export const LEARNLINK_GET_MODULES = 'learnlink_get_modules';
 export const LEARNLINK_SEARCH_MATERIALS = 'learnlink_search_materials';
 export const LEARNLINK_READ_MATERIAL = 'learnlink_read_material';
 
 export type LearnLinkToolKey =
   | typeof LEARNLINK_GET_ASSIGNMENTS
+  | typeof LEARNLINK_GET_MASTERY
   | typeof LEARNLINK_GET_MODULES
   | typeof LEARNLINK_SEARCH_MATERIALS
   | typeof LEARNLINK_READ_MATERIAL;
 
 export const learnLinkToolKeys: readonly LearnLinkToolKey[] = [
   LEARNLINK_GET_ASSIGNMENTS,
+  LEARNLINK_GET_MASTERY,
   LEARNLINK_GET_MODULES,
   LEARNLINK_SEARCH_MATERIALS,
   LEARNLINK_READ_MATERIAL,
@@ -44,7 +47,11 @@ function toToolError(toolKey: string, error: unknown): string {
   return `Canvas data is temporarily unavailable (${message}). Let the student know and answer from general knowledge if possible.`;
 }
 
-function createGetAssignmentsTool(): DynamicStructuredTool {
+export type LearnLinkToolOptions = {
+  tenantId?: string | null;
+};
+
+function createGetAssignmentsTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
   return tool(
     async ({ canvasCourseId, filter, query, dueAfter, dueBefore, withDescriptions, limit }) => {
       try {
@@ -56,6 +63,7 @@ function createGetAssignmentsTool(): DynamicStructuredTool {
           dueBefore,
           withDescriptions,
           limit,
+          tenantId: toolOptions.tenantId,
         });
         return toToolResult(result);
       } catch (error) {
@@ -65,7 +73,7 @@ function createGetAssignmentsTool(): DynamicStructuredTool {
     {
       name: LEARNLINK_GET_ASSIGNMENTS,
       description:
-        "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, its grading group, and optionally full instructions with linked files. Use for questions about homework, deadlines, grades, grade weighting, or what an assignment requires.",
+        "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, and teacher feedback on the submission. Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, or how a graded assignment was scored — narrow with query to get the full rubric breakdown for one assignment.",
       schema: z.object({
         canvasCourseId: courseIdParam,
         filter: z
@@ -86,7 +94,7 @@ function createGetAssignmentsTool(): DynamicStructuredTool {
           .boolean()
           .optional()
           .describe(
-            'Include full assignment instructions. Use when the student needs help doing the work.',
+            'Include full assignment instructions, linked files, the grading rubric with per-criterion scores, and teacher feedback. Use when the student needs help doing the work or understanding their grade.',
           ),
         limit: z.number().int().min(1).max(50).optional().describe('Max results, default 20.'),
       }),
@@ -94,11 +102,32 @@ function createGetAssignmentsTool(): DynamicStructuredTool {
   );
 }
 
-function createGetModulesTool(): DynamicStructuredTool {
+function createGetMasteryTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
   return tool(
     async ({ canvasCourseId }) => {
       try {
-        const result = await getModules(canvasCourseId);
+        const result = await getMastery({ canvasCourseId, tenantId: toolOptions.tenantId });
+        return toToolResult(result);
+      } catch (error) {
+        return toToolError(LEARNLINK_GET_MASTERY, error);
+      }
+    },
+    {
+      name: LEARNLINK_GET_MASTERY,
+      description:
+        "Get the student's Canvas Learning Mastery gradebook: each learning outcome/standard (e.g. \"Analyzing and interpreting data\") with the student's current score, the mastery threshold, a rating on the course's scale (Exemplary/Accomplished/Developing…), how many times it was assessed, and the most recent assessment. Use for questions about learning mastery, outcomes, standards, skills, or which areas the student is strongest/weakest in. Courses without published outcomes return an empty list — then infer strengths from assignment scores instead.",
+      schema: z.object({
+        canvasCourseId: courseIdParam,
+      }),
+    },
+  );
+}
+
+function createGetModulesTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
+  return tool(
+    async ({ canvasCourseId }) => {
+      try {
+        const result = await getModules(canvasCourseId, { tenantId: toolOptions.tenantId });
         return toToolResult(result);
       } catch (error) {
         return toToolError(LEARNLINK_GET_MODULES, error);
@@ -118,11 +147,16 @@ function createGetModulesTool(): DynamicStructuredTool {
   );
 }
 
-function createSearchMaterialsTool(): DynamicStructuredTool {
+function createSearchMaterialsTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
   return tool(
     async ({ query, canvasCourseId, limit }) => {
       try {
-        const result = await searchMaterials({ query, canvasCourseId, limit });
+        const result = await searchMaterials({
+          query,
+          canvasCourseId,
+          limit,
+          tenantId: toolOptions.tenantId,
+        });
         if (result.hits.length === 0) {
           return `No course materials matched "${query}". Try different keywords, or use learnlink_get_modules to browse the course structure.`;
         }
@@ -144,11 +178,11 @@ function createSearchMaterialsTool(): DynamicStructuredTool {
   );
 }
 
-function createReadMaterialTool(): DynamicStructuredTool {
+function createReadMaterialTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
   return tool(
     async ({ materialId, page }) => {
       try {
-        const result = await readMaterial({ materialId, page });
+        const result = await readMaterial({ materialId, page, tenantId: toolOptions.tenantId });
         if (result.status !== 'ok') {
           return `"${result.title}" has no readable text (${result.error ?? result.status}).`;
         }
@@ -173,13 +207,20 @@ function createReadMaterialTool(): DynamicStructuredTool {
   );
 }
 
-const toolFactories: Record<LearnLinkToolKey, () => DynamicStructuredTool> = {
+const toolFactories: Record<
+  LearnLinkToolKey,
+  (toolOptions: LearnLinkToolOptions) => DynamicStructuredTool
+> = {
   [LEARNLINK_GET_ASSIGNMENTS]: createGetAssignmentsTool,
+  [LEARNLINK_GET_MASTERY]: createGetMasteryTool,
   [LEARNLINK_GET_MODULES]: createGetModulesTool,
   [LEARNLINK_SEARCH_MATERIALS]: createSearchMaterialsTool,
   [LEARNLINK_READ_MATERIAL]: createReadMaterialTool,
 };
 
-export function createLearnLinkTool(toolKey: LearnLinkToolKey): DynamicStructuredTool {
-  return toolFactories[toolKey]();
+export function createLearnLinkTool(
+  toolKey: LearnLinkToolKey,
+  toolOptions: LearnLinkToolOptions = {},
+): DynamicStructuredTool {
+  return toolFactories[toolKey](toolOptions);
 }

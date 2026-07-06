@@ -10,6 +10,22 @@ export type LearnLinkAssignmentLink = {
   url?: string;
 };
 
+export type LearnLinkRubricLine = {
+  criterion: string;
+  pointsPossible: number;
+  countsTowardScore: boolean;
+  earnedPoints?: number | null;
+  earnedRating?: string;
+  teacherComment?: string;
+  ratingScale?: Array<{ label: string; points: number; detail?: string }>;
+};
+
+export type LearnLinkTeacherComment = {
+  author: string | null;
+  comment: string;
+  at: string | null;
+};
+
 export type LearnLinkAssignment = {
   canvasAssignmentId: number;
   courseId: string;
@@ -23,6 +39,8 @@ export type LearnLinkAssignment = {
   assignmentGroup?: string;
   description?: string;
   links?: LearnLinkAssignmentLink[];
+  rubric?: LearnLinkRubricLine[];
+  teacherComments?: LearnLinkTeacherComment[];
   courseName?: string | null;
 };
 
@@ -82,8 +100,34 @@ export type LearnLinkCourseContext = {
     pages: number;
     readableMaterials: number;
   };
+  masteryOutcomeCount?: number;
   lastSyncAt: string | null;
 };
+
+export type LearnLinkOutcome = {
+  outcome: string;
+  displayName: string | null;
+  score: number | null;
+  masteryPoints: number | null;
+  pointsPossible: number | null;
+  mastered: boolean | null;
+  rating: string | null;
+  ratingScale: string[] | null;
+  timesAssessed: number | null;
+  lastAssessed: { item: string; at: string | null } | null;
+  calculationMethod: string | null;
+  calculationWeight?: number;
+};
+
+export type LearnLinkCourseMastery = {
+  course: LearnLinkCourseRef;
+  outcomes: LearnLinkOutcome[];
+  note?: string;
+};
+
+export type LearnLinkMasteryResponse =
+  | LearnLinkCourseMastery
+  | { courses: LearnLinkCourseMastery[]; note?: string };
 
 export type LearnLinkMaterialKind = 'file' | 'page' | 'syllabus';
 

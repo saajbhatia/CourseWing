@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { useCanvasConnectionQuery } from './canvas';
 
 export type LearnLinkCourseSummary = {
   id: string;
@@ -59,8 +60,12 @@ export const learnLinkBaseUrl = (
   import.meta.env.VITE_LEARNLINK_CANVAS_SERVICE_URL || 'http://localhost:3333'
 ).replace(/\/+$/, '');
 
-async function fetchLearnLink<T>(path: string): Promise<T> {
-  const response = await fetch(`${learnLinkBaseUrl}${path}`);
+async function fetchLearnLink<T>(path: string, tenantId?: string): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (tenantId) {
+    headers['X-Tenant-Id'] = tenantId;
+  }
+  const response = await fetch(`${learnLinkBaseUrl}${path}`, { headers });
 
   if (!response.ok) {
     throw new Error(`LearnLink request failed: ${response.status}`);
@@ -69,14 +74,25 @@ async function fetchLearnLink<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Resolves the user's Canvas tenant once connected; undefined falls back to the shared default account. */
+function useTenantId(): { tenantId: string | undefined; ready: boolean } {
+  const connection = useCanvasConnectionQuery();
+  return {
+    tenantId: connection.data?.connected === true ? connection.data.tenantId : undefined,
+    ready: connection.isFetched,
+  };
+}
+
 export function useCurrentCoursesQuery(): UseQueryResult<LearnLinkCourseSummary[]> {
+  const { tenantId, ready } = useTenantId();
   return useQuery<LearnLinkCourseSummary[]>(
-    ['learnlink', 'current-courses', learnLinkBaseUrl],
-    () => fetchLearnLink<LearnLinkCourseSummary[]>('/api/learnlink/courses/current'),
+    ['learnlink', 'current-courses', learnLinkBaseUrl, tenantId ?? 'default'],
+    () => fetchLearnLink<LearnLinkCourseSummary[]>('/api/learnlink/courses/current', tenantId),
     {
       staleTime: 30000,
       cacheTime: 300000,
       retry: 1,
+      enabled: ready,
     },
   );
 }
@@ -84,14 +100,15 @@ export function useCurrentCoursesQuery(): UseQueryResult<LearnLinkCourseSummary[
 export function useCourseMaterialsQuery(
   canvasCourseId: number | null,
 ): UseQueryResult<LearnLinkCourseWithMaterials | undefined> {
+  const { tenantId, ready } = useTenantId();
   return useQuery<LearnLinkCourseWithMaterials[], Error, LearnLinkCourseWithMaterials | undefined>(
-    ['learnlink', 'course-materials', learnLinkBaseUrl],
-    () => fetchLearnLink<LearnLinkCourseWithMaterials[]>('/api/learnlink/courses'),
+    ['learnlink', 'course-materials', learnLinkBaseUrl, tenantId ?? 'default'],
+    () => fetchLearnLink<LearnLinkCourseWithMaterials[]>('/api/learnlink/courses', tenantId),
     {
       staleTime: 300000,
       cacheTime: 600000,
       retry: 1,
-      enabled: canvasCourseId != null,
+      enabled: canvasCourseId != null && ready,
       select: (courses) => courses.find((course) => course.canvasCourseId === canvasCourseId),
     },
   );

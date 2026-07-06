@@ -5,6 +5,7 @@ const {
   getCourseContextSafe,
   extractCanvasCourseId,
 } = require('@librechat/api');
+const { getLearnLinkTenantId } = require('~/server/services/LearnLink');
 
 const CARD_MARKER = '[LearnLink course context';
 
@@ -26,7 +27,8 @@ async function learnLinkContext(req, res, next) {
   }
 
   try {
-    const context = await getCourseContextSafe(canvasCourseId);
+    const tenantId = await getLearnLinkTenantId(req.user?.id);
+    const context = await getCourseContextSafe(canvasCourseId, { tenantId });
     if (!context) {
       return next();
     }

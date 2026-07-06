@@ -35,6 +35,7 @@ import SharedLinks from '../SettingsTabs/Data/SharedLinks';
 import { showThinkingAtom } from '~/store/showThinking';
 import ProviderKeys from '../SettingsTabs/ProviderKeys';
 import Avatar from '../SettingsTabs/Account/Avatar';
+import CanvasConnection from '../SettingsTabs/Account/CanvasConnection';
 import About from '../SettingsTabs/About/About';
 import ApiKeys from '../SettingsTabs/ApiKeys';
 import MemoryToggle from './MemoryToggle';
@@ -514,6 +515,14 @@ export const registry: SettingEntry[] = [
     section: 'profile',
     labelKey: 'com_ui_settings_label_avatar',
     Component: Avatar,
+  },
+  // Account · Connections
+  {
+    id: 'canvasConnection',
+    tab: ACCOUNT,
+    section: 'connections',
+    labelKey: 'com_ui_settings_label_canvas',
+    Component: CanvasConnection,
   },
   // Account · Security
   {
