@@ -44,7 +44,7 @@ function ProjectConversationDialog({
   });
 
   const projects = useMemo<TChatProject[]>(
-    () => data?.pages.flatMap((page) => page.projects) ?? [],
+    () => data?.pages.flatMap((page) => page?.projects ?? []) ?? [],
     [data?.pages],
   );
   const hasNextPage = data?.pages[data.pages.length - 1]?.nextCursor != null;

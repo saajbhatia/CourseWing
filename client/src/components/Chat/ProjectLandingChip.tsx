@@ -23,7 +23,10 @@ export default function ProjectLandingChip({ project }: { project: TChatProject 
     { sortBy: 'lastConversationAt', sortDirection: 'desc', limit: 100 },
     { staleTime: 30000 },
   );
-  const projects = useMemo(() => data?.pages.flatMap((page) => page.projects) ?? [], [data?.pages]);
+  const projects = useMemo(
+    () => data?.pages.flatMap((page) => page?.projects ?? []) ?? [],
+    [data?.pages],
+  );
   const items = useMemo<OptionWithIcon[]>(
     () =>
       projects.map((item) => ({

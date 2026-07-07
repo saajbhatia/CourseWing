@@ -58,7 +58,10 @@ export default function ProjectsView() {
     sortDirection: sortBy === 'name' ? 'asc' : 'desc',
   });
 
-  const projects = useMemo(() => data?.pages.flatMap((page) => page.projects) ?? [], [data?.pages]);
+  const projects = useMemo(
+    () => data?.pages.flatMap((page) => page?.projects ?? []) ?? [],
+    [data?.pages],
+  );
   const hasNextPage = data?.pages[data.pages.length - 1]?.nextCursor != null;
   const sortOptions = useMemo(
     () => [
