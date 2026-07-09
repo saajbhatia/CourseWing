@@ -21,6 +21,7 @@ import {
   useAddedChatContext,
   useAssistantsMapContext,
 } from '~/Providers';
+import AssistanceLevelBar, { AssistanceLevelNote } from '~/components/LearnLink/AssistanceLevelBar';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import { cn, getModelSpec, removeFocusRings } from '~/utils';
 import { useGetStartupConfig } from '~/data-provider';
@@ -260,6 +261,7 @@ const ChatForm = memo(function ChatForm({
       <div className="relative flex h-full flex-1 items-stretch md:flex-col">
         {/* Primary composer owns the selection popup so split-view doesn't double it. */}
         {index === 0 && quotesEnabled && <QuoteButton conversationId={conversationId} />}
+        <AssistanceLevelNote />
         <div className={cn('flex w-full items-center', isRTL && 'flex-row-reverse')}>
           <Mention
             index={index}
@@ -375,6 +377,7 @@ const ChatForm = memo(function ChatForm({
                   setFilesLoading={setFilesLoading}
                 />
               </div>
+              <AssistanceLevelBar />
               <BadgeRow
                 showEphemeralBadges={
                   !!endpoint &&

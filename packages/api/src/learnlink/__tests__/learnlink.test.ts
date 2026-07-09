@@ -1,5 +1,7 @@
+import { assistanceLevels, LEARNLINK_POLICY_MARKER } from 'librechat-data-provider';
 import { buildCourseCard, extractCanvasCourseId } from '../card';
 import { clearCourseContextCache } from '../service';
+import { buildAssistancePolicy } from '../prompts';
 import {
   createLearnLinkTool,
   LEARNLINK_GET_ASSIGNMENTS,
@@ -50,6 +52,23 @@ describe('extractCanvasCourseId', () => {
     expect(extractCanvasCourseId('Just a normal prompt prefix')).toBeNull();
     expect(extractCanvasCourseId(undefined)).toBeNull();
     expect(extractCanvasCourseId(null)).toBeNull();
+  });
+});
+
+describe('buildAssistancePolicy', () => {
+  it('builds a marker-prefixed policy block for every level', () => {
+    for (const level of assistanceLevels) {
+      const policy = buildAssistancePolicy(level);
+      expect(policy.startsWith(LEARNLINK_POLICY_MARKER)).toBe(true);
+      expect(policy).toContain('ASSISTANCE LEVEL:');
+    }
+  });
+
+  it('scopes each level to its own permissions', () => {
+    expect(buildAssistancePolicy('discuss')).toContain('Discuss only');
+    expect(buildAssistancePolicy('hints')).toContain('next small step');
+    expect(buildAssistancePolicy('worked')).toContain('analogous problems');
+    expect(buildAssistancePolicy('full')).toContain('No restrictions');
   });
 });
 

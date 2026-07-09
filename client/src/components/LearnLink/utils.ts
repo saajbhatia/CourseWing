@@ -57,7 +57,7 @@ export function getAssignmentPrefix(
     getCoursePrefix(course),
     `Assignment: ${assignment.name}`,
     assignment.dueAt ? `Due: ${assignment.dueAt}` : '',
-    'The student wants help with this assignment. Guide them through it rather than doing it for them.',
+    'The student wants help with this assignment.',
   ]
     .filter(Boolean)
     .join('\n');
