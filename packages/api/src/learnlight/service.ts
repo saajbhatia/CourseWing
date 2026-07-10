@@ -1,13 +1,14 @@
 import { logger } from '@librechat/data-schemas';
 import type {
-  LearnLinkAssignmentFilter,
-  LearnLinkAssignmentsResponse,
-  LearnLinkCourseContext,
-  LearnLinkMasteryResponse,
-  LearnLinkMaterialTextResponse,
-  LearnLinkModulesResponse,
-  LearnLinkSearchResponse,
-  LearnLinkTenantStatus,
+  LearnLightAssignmentFilter,
+  LearnLightAssignmentsResponse,
+  LearnLightCourseContext,
+  LearnLightFeedbackResponse,
+  LearnLightMasteryResponse,
+  LearnLightMaterialTextResponse,
+  LearnLightModulesResponse,
+  LearnLightSearchResponse,
+  LearnLightTenantStatus,
 } from './types';
 import { getCanvasServiceUrl } from './config';
 
@@ -15,29 +16,36 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const CONTEXT_CACHE_TTL_MS = 60_000;
 const RECENT_GRADED_LIMIT = 8;
 
-const contextCache = new Map<string, { expiresAt: number; value: LearnLinkCourseContext }>();
+const contextCache = new Map<string, { expiresAt: number; value: LearnLightCourseContext }>();
 
-export type LearnLinkRequestOptions = {
+export type LearnLightRequestOptions = {
   tenantId?: string | null;
+  method?: 'GET' | 'POST';
+  body?: Record<string, unknown>;
 };
 
-async function fetchJson<T>(path: string, options?: LearnLinkRequestOptions): Promise<T> {
+async function fetchJson<T>(path: string, options?: LearnLightRequestOptions): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options?.tenantId) {
     headers['X-Tenant-Id'] = options.tenantId;
   }
+  if (options?.body != null) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   try {
     const response = await fetch(`${getCanvasServiceUrl()}${path}`, {
       signal: controller.signal,
       headers,
+      method: options?.method ?? 'GET',
+      body: options?.body != null ? JSON.stringify(options.body) : undefined,
     });
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`LearnLink service responded ${response.status} for ${path}: ${body}`);
+      throw new Error(`LearnLight service responded ${response.status} for ${path}: ${body}`);
     }
 
     return (await response.json()) as T;
@@ -48,8 +56,8 @@ async function fetchJson<T>(path: string, options?: LearnLinkRequestOptions): Pr
 
 export async function getCourseContext(
   canvasCourseId: number,
-  options?: LearnLinkRequestOptions,
-): Promise<LearnLinkCourseContext> {
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightCourseContext> {
   const cacheKey = `${options?.tenantId ?? 'default'}:${canvasCourseId}`;
   const cached = contextCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -57,7 +65,7 @@ export async function getCourseContext(
   }
 
   const [value, gradedWork, moduleNames] = await Promise.all([
-    fetchJson<LearnLinkCourseContext>(`/api/learnlink/courses/${canvasCourseId}/context`, options),
+    fetchJson<LearnLightCourseContext>(`/api/learnlight/courses/${canvasCourseId}/context`, options),
     getRecentGradedWorkSafe(canvasCourseId, options),
     getModuleNamesSafe(canvasCourseId, options),
   ]);
@@ -78,7 +86,7 @@ export async function getCourseContext(
 
 async function getModuleNamesSafe(
   canvasCourseId: number,
-  options?: LearnLinkRequestOptions,
+  options?: LearnLightRequestOptions,
 ): Promise<string[] | null> {
   try {
     const response = await getModules(canvasCourseId, options);
@@ -88,7 +96,7 @@ async function getModuleNamesSafe(
       .map((module) => module.name);
   } catch (error) {
     logger.warn(
-      `[LearnLink] Failed to fetch module names for course card ${canvasCourseId}: ${
+      `[LearnLight] Failed to fetch module names for course card ${canvasCourseId}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -98,8 +106,8 @@ async function getModuleNamesSafe(
 
 async function getRecentGradedWorkSafe(
   canvasCourseId: number,
-  options?: LearnLinkRequestOptions,
-): Promise<LearnLinkAssignmentsResponse | null> {
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightAssignmentsResponse | null> {
   try {
     return await getAssignments({
       canvasCourseId,
@@ -109,7 +117,7 @@ async function getRecentGradedWorkSafe(
     });
   } catch (error) {
     logger.warn(
-      `[LearnLink] Failed to fetch graded work for course card ${canvasCourseId}: ${
+      `[LearnLight] Failed to fetch graded work for course card ${canvasCourseId}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -123,14 +131,14 @@ export function clearCourseContextCache(): void {
 
 export async function getAssignments(params: {
   canvasCourseId?: number;
-  filter?: LearnLinkAssignmentFilter;
+  filter?: LearnLightAssignmentFilter;
   query?: string;
   dueAfter?: string;
   dueBefore?: string;
   withDescriptions?: boolean;
   limit?: number;
   tenantId?: string | null;
-}): Promise<LearnLinkAssignmentsResponse> {
+}): Promise<LearnLightAssignmentsResponse> {
   const searchParams = new URLSearchParams();
   if (params.filter) {
     searchParams.set('filter', params.filter);
@@ -153,21 +161,21 @@ export async function getAssignments(params: {
 
   const basePath =
     params.canvasCourseId != null
-      ? `/api/learnlink/courses/${params.canvasCourseId}/assignments`
-      : '/api/learnlink/assignments';
+      ? `/api/learnlight/courses/${params.canvasCourseId}/assignments`
+      : '/api/learnlight/assignments';
   const query = searchParams.toString();
 
-  return fetchJson<LearnLinkAssignmentsResponse>(query ? `${basePath}?${query}` : basePath, {
+  return fetchJson<LearnLightAssignmentsResponse>(query ? `${basePath}?${query}` : basePath, {
     tenantId: params.tenantId,
   });
 }
 
 export async function getModules(
   canvasCourseId: number,
-  options?: LearnLinkRequestOptions,
-): Promise<LearnLinkModulesResponse> {
-  return fetchJson<LearnLinkModulesResponse>(
-    `/api/learnlink/courses/${canvasCourseId}/modules`,
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightModulesResponse> {
+  return fetchJson<LearnLightModulesResponse>(
+    `/api/learnlight/courses/${canvasCourseId}/modules`,
     options,
   );
 }
@@ -175,13 +183,13 @@ export async function getModules(
 export async function getMastery(params: {
   canvasCourseId?: number;
   tenantId?: string | null;
-}): Promise<LearnLinkMasteryResponse> {
+}): Promise<LearnLightMasteryResponse> {
   const path =
     params.canvasCourseId != null
-      ? `/api/learnlink/courses/${params.canvasCourseId}/mastery`
-      : '/api/learnlink/mastery';
+      ? `/api/learnlight/courses/${params.canvasCourseId}/mastery`
+      : '/api/learnlight/mastery';
 
-  return fetchJson<LearnLinkMasteryResponse>(path, { tenantId: params.tenantId });
+  return fetchJson<LearnLightMasteryResponse>(path, { tenantId: params.tenantId });
 }
 
 export async function searchMaterials(params: {
@@ -189,7 +197,7 @@ export async function searchMaterials(params: {
   canvasCourseId?: number;
   limit?: number;
   tenantId?: string | null;
-}): Promise<LearnLinkSearchResponse> {
+}): Promise<LearnLightSearchResponse> {
   const searchParams = new URLSearchParams({ q: params.query });
   if (params.canvasCourseId != null) {
     searchParams.set('canvasCourseId', String(params.canvasCourseId));
@@ -198,7 +206,7 @@ export async function searchMaterials(params: {
     searchParams.set('limit', String(params.limit));
   }
 
-  return fetchJson<LearnLinkSearchResponse>(`/api/learnlink/search?${searchParams.toString()}`, {
+  return fetchJson<LearnLightSearchResponse>(`/api/learnlight/search?${searchParams.toString()}`, {
     tenantId: params.tenantId,
   });
 }
@@ -207,31 +215,54 @@ export async function readMaterial(params: {
   materialId: string;
   page?: number;
   tenantId?: string | null;
-}): Promise<LearnLinkMaterialTextResponse> {
+}): Promise<LearnLightMaterialTextResponse> {
   const searchParams = new URLSearchParams();
   if (params.page) {
     searchParams.set('page', String(params.page));
   }
 
   const query = searchParams.toString();
-  const basePath = `/api/learnlink/materials/${encodeURIComponent(params.materialId)}/text`;
-  return fetchJson<LearnLinkMaterialTextResponse>(query ? `${basePath}?${query}` : basePath, {
+  const basePath = `/api/learnlight/materials/${encodeURIComponent(params.materialId)}/text`;
+  return fetchJson<LearnLightMaterialTextResponse>(query ? `${basePath}?${query}` : basePath, {
     tenantId: params.tenantId,
+  });
+}
+
+export async function sendFeedback(params: {
+  message?: string;
+  category?: string;
+  shareChat?: boolean;
+  conversationId?: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+  tenantId?: string | null;
+}): Promise<LearnLightFeedbackResponse> {
+  return fetchJson<LearnLightFeedbackResponse>('/api/learnlight/feedback', {
+    tenantId: params.tenantId,
+    method: 'POST',
+    body: {
+      message: params.message,
+      category: params.category,
+      shareChat: params.shareChat,
+      conversationId: params.conversationId,
+      userName: params.userName,
+      userEmail: params.userEmail,
+    },
   });
 }
 
 /** Sync state for a connected Canvas account; null for the shared default tenant or on error. */
 export async function getTenantStatusSafe(
   tenantId?: string | null,
-): Promise<LearnLinkTenantStatus | null> {
+): Promise<LearnLightTenantStatus | null> {
   if (!tenantId) {
     return null;
   }
   try {
-    return await fetchJson<LearnLinkTenantStatus>(`/api/learnlink/tenants/${tenantId}`);
+    return await fetchJson<LearnLightTenantStatus>(`/api/learnlight/tenants/${tenantId}`);
   } catch (error) {
     logger.warn(
-      `[LearnLink] Failed to fetch tenant status for ${tenantId}: ${
+      `[LearnLight] Failed to fetch tenant status for ${tenantId}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -241,13 +272,13 @@ export async function getTenantStatusSafe(
 
 export async function getCourseContextSafe(
   canvasCourseId: number,
-  options?: LearnLinkRequestOptions,
-): Promise<LearnLinkCourseContext | null> {
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightCourseContext | null> {
   try {
     return await getCourseContext(canvasCourseId, options);
   } catch (error) {
     logger.warn(
-      `[LearnLink] Failed to fetch course context for ${canvasCourseId}: ${
+      `[LearnLight] Failed to fetch course context for ${canvasCourseId}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );

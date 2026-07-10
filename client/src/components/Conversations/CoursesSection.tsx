@@ -2,14 +2,14 @@ import { memo, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Spinner, TooltipAnchor } from '@librechat/client';
 import { AlertCircle, BookOpen, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import type { LearnLinkCourseSummary } from '~/data-provider/LearnLink';
+import type { LearnLightCourseSummary } from '~/data-provider/LearnLight';
 import {
   getDisplayCourseName,
   iconButtonClassName,
   getCourseInitial,
   getCourseColor,
-} from '~/components/LearnLink/utils';
-import { useCanvasConnectionQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLink';
+} from '~/components/LearnLight/utils';
+import { useCanvasConnectionQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLight';
 import { useLocalize, useLocalStorage } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -20,7 +20,7 @@ type CoursesSectionProps = {
 function CoursesSection({ toggleNav }: CoursesSectionProps) {
   const localize = useLocalize();
   const navigate = useNavigate();
-  const [isExpanded, setIsExpanded] = useLocalStorage('learnlinkCoursesExpanded', true);
+  const [isExpanded, setIsExpanded] = useLocalStorage('learnlightCoursesExpanded', true);
   const { data: courses = [], isLoading, isError, isFetching, refetch } = useCurrentCoursesQuery();
   const { data: connection } = useCanvasConnectionQuery();
   const isSyncing =
@@ -32,7 +32,7 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
   );
 
   const openCourse = useCallback(
-    (course: LearnLinkCourseSummary) => {
+    (course: LearnLightCourseSummary) => {
       navigate(`/courses/${course.canvasCourseId}`);
       toggleNav();
     },

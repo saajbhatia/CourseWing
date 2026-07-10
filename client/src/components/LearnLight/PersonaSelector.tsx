@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { Check, Drama } from 'lucide-react';
 import { DropdownPopup } from '@librechat/client';
-import { extractPersona, learnLinkPersonas, setPersonaInPrefix } from 'librechat-data-provider';
-import type { LearnLinkPersona } from 'librechat-data-provider';
+import { extractPersona, learnLightPersonas, setPersonaInPrefix } from 'librechat-data-provider';
+import type { LearnLightPersona } from 'librechat-data-provider';
 import { useChatContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -20,7 +20,7 @@ function usePersona() {
   const persona = extractPersona(conversation?.promptPrefix);
 
   const setPersona = useCallback(
-    (next: LearnLinkPersona | null) => {
+    (next: LearnLightPersona | null) => {
       setConversation((prev) =>
         prev == null
           ? prev
@@ -38,9 +38,9 @@ export default function PersonaSelector() {
   const [isOpen, setIsOpen] = useState(false);
   const { persona, setPersona } = usePersona();
 
-  const options: Array<{ value: LearnLinkPersona | null; label: string }> = [
+  const options: Array<{ value: LearnLightPersona | null; label: string }> = [
     { value: null, label: localize('com_ui_persona_default') },
-    ...learnLinkPersonas.map((value) => ({ value, label: localize(personaLabelKeys[value]) })),
+    ...learnLightPersonas.map((value) => ({ value, label: localize(personaLabelKeys[value]) })),
   ];
 
   const items = options.map((option) => ({
@@ -76,7 +76,7 @@ export default function PersonaSelector() {
 
   return (
     <DropdownPopup
-      menuId="learnlink-persona-menu"
+      menuId="learnlight-persona-menu"
       isOpen={isOpen}
       setIsOpen={setIsOpen}
       trigger={trigger}

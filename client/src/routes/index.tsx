@@ -19,7 +19,7 @@ import LoginLayout from './Layouts/Login';
 import dashboardRoutes from './Dashboard';
 import ShareRoute from './ShareRoute';
 import ChatRoute from './ChatRoute';
-import LearnLinkIntro from './LearnLinkIntro';
+import LearnLightIntro from './LearnLightIntro';
 import Search from './Search';
 import Root from './Root';
 
@@ -53,7 +53,7 @@ const loadProjectWorkspace = () =>
   }));
 
 const loadCoursePage = () =>
-  import('~/components/LearnLink').then((m) => ({
+  import('~/components/LearnLight').then((m) => ({
     Component: m.CoursePage,
   }));
 
@@ -63,9 +63,13 @@ const baseHref = baseEl?.getAttribute('href') || '/';
 export const router = createBrowserRouter(
   [
     {
-      path: 'learnlink',
-      element: <LearnLinkIntro />,
+      path: 'learnlight',
+      element: <LearnLightIntro />,
       errorElement: <RouteErrorBoundary />,
+    },
+    {
+      path: 'learnlink',
+      element: <Navigate to="/learnlight" replace={true} />,
     },
     {
       path: 'share/:shareId',

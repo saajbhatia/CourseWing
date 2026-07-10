@@ -6,7 +6,7 @@ import {
   useCanvasConnectionQuery,
   useConnectCanvasMutation,
   useDisconnectCanvasMutation,
-} from '~/data-provider/LearnLink';
+} from '~/data-provider/LearnLight';
 import { useLocalize } from '~/hooks';
 
 function connectErrorMessage(error: Error, fallback: string): string {

@@ -1,7 +1,7 @@
 import { request, QueryKeys } from 'librechat-data-provider';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
-import type { LearnLinkCourseSummary } from './queries';
+import type { LearnLightCourseSummary } from './queries';
 
 export type CanvasConnection = {
   connected: boolean;
@@ -14,13 +14,13 @@ export type CanvasConnection = {
   courseCount?: number;
 };
 
-export const canvasConnectionQueryKey = ['learnlink', 'canvas-connection'];
+export const canvasConnectionQueryKey = ['learnlight', 'canvas-connection'];
 
 export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
   const queryClient = useQueryClient();
   return useQuery<CanvasConnection>(
     canvasConnectionQueryKey,
-    () => request.get('/api/learnlink/canvas'),
+    () => request.get('/api/learnlight/canvas'),
     {
       staleTime: 30000,
       retry: 1,
@@ -29,8 +29,8 @@ export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
         if (data.connected !== true) {
           return;
         }
-        const cachedCourseQueries = queryClient.getQueriesData<LearnLinkCourseSummary[]>([
-          'learnlink',
+        const cachedCourseQueries = queryClient.getQueriesData<LearnLightCourseSummary[]>([
+          'learnlight',
           'current-courses',
         ]);
         const countMismatch =
@@ -41,7 +41,7 @@ export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
         /* During a sync, courses land in the store one by one — refresh on every status
          * poll so the sidebar fills as they arrive instead of waiting for full completion. */
         if (data.syncing === true || countMismatch) {
-          queryClient.invalidateQueries(['learnlink', 'current-courses']);
+          queryClient.invalidateQueries(['learnlight', 'current-courses']);
         }
       },
     },
@@ -60,10 +60,10 @@ export function useConnectCanvasMutation(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<CanvasConnection, Error, ConnectCanvasPayload>(
-    (payload) => request.put('/api/learnlink/canvas', payload),
+    (payload) => request.put('/api/learnlight/canvas', payload),
     {
       onSuccess: () => {
-        queryClient.invalidateQueries(['learnlink']);
+        queryClient.invalidateQueries(['learnlight']);
         queryClient.invalidateQueries([QueryKeys.messages]);
       },
     },
@@ -72,9 +72,9 @@ export function useConnectCanvasMutation(): UseMutationResult<
 
 export function useDisconnectCanvasMutation(): UseMutationResult<CanvasConnection, Error, void> {
   const queryClient = useQueryClient();
-  return useMutation<CanvasConnection, Error, void>(() => request.delete('/api/learnlink/canvas'), {
+  return useMutation<CanvasConnection, Error, void>(() => request.delete('/api/learnlight/canvas'), {
     onSuccess: () => {
-      queryClient.invalidateQueries(['learnlink']);
+      queryClient.invalidateQueries(['learnlight']);
     },
   });
 }

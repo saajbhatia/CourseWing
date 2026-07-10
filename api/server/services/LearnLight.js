@@ -4,16 +4,23 @@ const { getCanvasServiceUrl } = require('@librechat/api');
 const { extractCanvasCourseId } = require('librechat-data-provider');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 
-const LEARNLINK_PLUGIN_KEY = 'learnlink';
-const CANVAS_TOKEN_FIELD = 'LEARNLINK_CANVAS_TOKEN';
-const CANVAS_TENANT_FIELD = 'LEARNLINK_CANVAS_TENANT';
+const LEARNLIGHT_PLUGIN_KEY = 'learnlight';
+const CANVAS_TOKEN_FIELD = 'LEARNLIGHT_CANVAS_TOKEN';
+const CANVAS_TENANT_FIELD = 'LEARNLIGHT_CANVAS_TENANT';
+/** Pre-rename field names — accounts connected before the LearnLight rebrand still store these. */
+const LEGACY_CANVAS_TOKEN_FIELD = 'LEARNLINK_CANVAS_TOKEN';
+const LEGACY_CANVAS_TENANT_FIELD = 'LEARNLINK_CANVAS_TENANT';
 
 /** Returns the user's Canvas tenant id, or null when they haven't connected an account. */
-async function getLearnLinkTenantId(userId) {
+async function getLearnLightTenantId(userId) {
   if (!userId) {
     return null;
   }
-  return (await getUserPluginAuthValue(userId, CANVAS_TENANT_FIELD, false)) || null;
+  return (
+    (await getUserPluginAuthValue(userId, CANVAS_TENANT_FIELD, false)) ||
+    (await getUserPluginAuthValue(userId, LEGACY_CANVAS_TENANT_FIELD, false)) ||
+    null
+  );
 }
 
 async function serviceFetch(path, options = {}) {
@@ -50,15 +57,17 @@ async function backfillCourseChats() {
 
   if (ops.length > 0) {
     await Conversation.bulkWrite(ops);
-    logger.info(`[LearnLink] Backfilled canvasCourseId on ${ops.length} conversation(s)`);
+    logger.info(`[LearnLight] Backfilled canvasCourseId on ${ops.length} conversation(s)`);
   }
 }
 
 module.exports = {
   serviceFetch,
   backfillCourseChats,
-  getLearnLinkTenantId,
-  LEARNLINK_PLUGIN_KEY,
+  getLearnLightTenantId,
+  LEARNLIGHT_PLUGIN_KEY,
   CANVAS_TOKEN_FIELD,
   CANVAS_TENANT_FIELD,
+  LEGACY_CANVAS_TOKEN_FIELD,
+  LEGACY_CANVAS_TENANT_FIELD,
 };

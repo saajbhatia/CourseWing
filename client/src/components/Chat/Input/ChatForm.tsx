@@ -21,7 +21,7 @@ import {
   useAddedChatContext,
   useAssistantsMapContext,
 } from '~/Providers';
-import PersonaSelector from '~/components/LearnLink/PersonaSelector';
+import PersonaSelector from '~/components/LearnLight/PersonaSelector';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import { cn, getModelSpec, removeFocusRings } from '~/utils';
 import { useGetStartupConfig } from '~/data-provider';

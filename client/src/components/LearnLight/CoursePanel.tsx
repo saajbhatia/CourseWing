@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MessageCircle, Plus } from 'lucide-react';
 import { getConversationCourseId } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
-import { useCurrentCoursesQuery } from '~/data-provider/LearnLink';
+import { useCurrentCoursesQuery } from '~/data-provider/LearnLight';
 import {
   getDisplayCourseName,
   clearPendingCourse,

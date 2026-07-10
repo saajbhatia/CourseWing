@@ -1,20 +1,21 @@
 import {
   assistanceLevels,
-  stripLearnLinkBlocks,
-  LEARNLINK_TUTOR_MARKER,
-  LEARNLINK_POLICY_MARKER,
+  stripLearnLightBlocks,
+  LEARNLIGHT_TUTOR_MARKER,
+  LEARNLIGHT_POLICY_MARKER,
 } from 'librechat-data-provider';
 import { buildCourseCard, extractCanvasCourseId } from '../card';
 import { clearCourseContextCache } from '../service';
 import { buildAssistancePolicy, buildLearningDefault } from '../prompts';
 import {
-  createLearnLinkTool,
-  LEARNLINK_GET_ASSIGNMENTS,
-  LEARNLINK_SEARCH_MATERIALS,
+  createLearnLightTool,
+  LEARNLIGHT_GET_ASSIGNMENTS,
+  LEARNLIGHT_SEARCH_MATERIALS,
+  LEARNLIGHT_SEND_FEEDBACK,
 } from '../tools';
-import type { LearnLinkCourseContext } from '../types';
+import type { LearnLightCourseContext } from '../types';
 
-const courseContext: LearnLinkCourseContext = {
+const courseContext: LearnLightCourseContext = {
   course: {
     canvasCourseId: 754,
     name: 'AP Chemistry',
@@ -95,7 +96,7 @@ describe('buildAssistancePolicy', () => {
   it('builds a marker-prefixed policy block for every level', () => {
     for (const level of assistanceLevels) {
       const policy = buildAssistancePolicy(level);
-      expect(policy.startsWith(LEARNLINK_POLICY_MARKER)).toBe(true);
+      expect(policy.startsWith(LEARNLIGHT_POLICY_MARKER)).toBe(true);
       expect(policy).toContain('ASSISTANCE LEVEL:');
     }
   });
@@ -111,9 +112,9 @@ describe('buildAssistancePolicy', () => {
 describe('buildLearningDefault', () => {
   it('builds a tutor block without policy framing', () => {
     const tutor = buildLearningDefault();
-    expect(tutor.startsWith(LEARNLINK_TUTOR_MARKER)).toBe(true);
+    expect(tutor.startsWith(LEARNLIGHT_TUTOR_MARKER)).toBe(true);
     expect(tutor).toContain('Answer direct questions fully');
-    expect(tutor).not.toContain(LEARNLINK_POLICY_MARKER);
+    expect(tutor).not.toContain(LEARNLIGHT_POLICY_MARKER);
     expect(tutor).not.toContain('ASSISTANCE LEVEL:');
     expect(tutor).not.toContain('Follow it strictly');
   });
@@ -135,16 +136,16 @@ describe('buildLearningDefault', () => {
 
   it('tells the tutor to ground school-life questions in real data via tools', () => {
     const tutor = buildLearningDefault();
-    expect(tutor).toContain('learnlink_* tools');
+    expect(tutor).toContain('learnlight_* tools');
     expect(tutor).toContain('ALL of their classes');
     expect(tutor).toContain('Never fill a plan with placeholder blanks');
   });
 });
 
-describe('stripLearnLinkBlocks', () => {
+describe('stripLearnLightBlocks', () => {
   it('strips a server-appended learning default block', () => {
     const prefix = `Some base prefix\n\n${buildLearningDefault()}`;
-    expect(stripLearnLinkBlocks(prefix)).toBe('Some base prefix');
+    expect(stripLearnLightBlocks(prefix)).toBe('Some base prefix');
   });
 });
 
@@ -158,7 +159,7 @@ describe('buildCourseCard', () => {
     expect(card).toContain('25 pts');
     expect(card).toContain('unsubmitted');
     expect(card).toContain('Exam moved to Friday');
-    expect(card).toContain('learnlink_search_materials');
+    expect(card).toContain('learnlight_search_materials');
     expect(card.length).toBeLessThan(3000);
   });
 
@@ -208,7 +209,7 @@ describe('buildCourseCard', () => {
   });
 });
 
-describe('learnlink tools', () => {
+describe('learnlight tools', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
@@ -233,14 +234,14 @@ describe('learnlink tools', () => {
     };
     mockFetchResponse(payload);
 
-    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS).invoke({
+    const result = await createLearnLightTool(LEARNLIGHT_GET_ASSIGNMENTS).invoke({
       canvasCourseId: 754,
       filter: 'upcoming',
     });
 
     expect(JSON.parse(result as string)).toEqual(payload);
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/learnlink/courses/754/assignments?filter=upcoming'),
+      expect.stringContaining('/api/learnlight/courses/754/assignments?filter=upcoming'),
       expect.anything(),
     );
   });
@@ -250,7 +251,7 @@ describe('learnlink tools', () => {
       .fn()
       .mockRejectedValue(new Error('connect ECONNREFUSED')) as unknown as typeof fetch;
 
-    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS).invoke({});
+    const result = await createLearnLightTool(LEARNLIGHT_GET_ASSIGNMENTS).invoke({});
 
     expect(result).toContain('temporarily unavailable');
   });
@@ -258,7 +259,7 @@ describe('learnlink tools', () => {
   it('suggests alternatives when search has no hits', async () => {
     mockFetchResponse({ query: 'entropy', hits: [] });
 
-    const result = await createLearnLinkTool(LEARNLINK_SEARCH_MATERIALS).invoke({
+    const result = await createLearnLightTool(LEARNLIGHT_SEARCH_MATERIALS).invoke({
       query: 'entropy',
     });
 
@@ -286,7 +287,7 @@ describe('learnlink tools', () => {
       },
     ]);
 
-    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS, {
+    const result = await createLearnLightTool(LEARNLIGHT_GET_ASSIGNMENTS, {
       tenantId: 'tenant-1',
     }).invoke({});
 
@@ -308,23 +309,64 @@ describe('learnlink tools', () => {
       },
     ]);
 
-    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS, {
+    const result = await createLearnLightTool(LEARNLIGHT_GET_ASSIGNMENTS, {
       tenantId: 'tenant-1',
     }).invoke({});
 
     expect(JSON.parse(result as string)).toEqual({ assignments: [] });
   });
 
+  it('sends app feedback and instructs the follow-up share-chat ask', async () => {
+    mockFetchResponse({ feedback: { id: 1, chatShared: false } });
+
+    const result = await createLearnLightTool(LEARNLIGHT_SEND_FEEDBACK, {
+      tenantId: 'tenant-1',
+      conversationId: 'convo-9',
+      userName: 'Saaj',
+      userEmail: 'saaj@school.test',
+    }).invoke({ message: 'The review sessions are awesome', category: 'praise' });
+
+    expect(result).toContain('Feedback sent');
+    expect(result).toContain('share this chat');
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(String(url)).toContain('/api/learnlight/feedback');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body.message).toBe('The review sessions are awesome');
+    expect(body.conversationId).toBe('convo-9');
+    expect(body.userEmail).toBe('saaj@school.test');
+  });
+
+  it('attaches the chat on a shareChat-only follow-up call', async () => {
+    mockFetchResponse({ updated: 1 });
+
+    const result = await createLearnLightTool(LEARNLIGHT_SEND_FEEDBACK, {
+      conversationId: 'convo-9',
+    }).invoke({ shareChat: true });
+
+    expect(result).toContain('now attached');
+  });
+
+  it('tells the model to resend when there is no feedback to attach the chat to', async () => {
+    mockFetchResponse({ updated: 0 });
+
+    const result = await createLearnLightTool(LEARNLIGHT_SEND_FEEDBACK, {
+      conversationId: 'convo-9',
+    }).invoke({ shareChat: true });
+
+    expect(result).toContain('no earlier feedback');
+  });
+
   it('reports sync-in-progress for empty search results while the tenant syncs', async () => {
     mockFetchByUrl([
-      { match: '/api/learnlink/search', payload: { query: 'entropy', hits: [] } },
+      { match: '/api/learnlight/search', payload: { query: 'entropy', hits: [] } },
       {
         match: '/tenants/tenant-1',
         payload: { tenantId: 'tenant-1', syncing: true, lastSyncAt: null, courseCount: 0 },
       },
     ]);
 
-    const result = await createLearnLinkTool(LEARNLINK_SEARCH_MATERIALS, {
+    const result = await createLearnLightTool(LEARNLIGHT_SEARCH_MATERIALS, {
       tenantId: 'tenant-1',
     }).invoke({ query: 'entropy' });
 

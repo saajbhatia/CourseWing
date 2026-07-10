@@ -4,9 +4,9 @@ import { addDays, format, isSameDay } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, ArrowUp, Files, Sparkles } from 'lucide-react';
 import type { TranslationKeys } from '~/hooks/useLocalize';
-import type { LearnLinkAssignment } from '~/data-provider/LearnLink';
-import type { LearnLinkCourseIdentity } from './utils';
-import { useCourseMaterialsQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLink';
+import type { LearnLightAssignment } from '~/data-provider/LearnLight';
+import type { LearnLightCourseIdentity } from './utils';
+import { useCourseMaterialsQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLight';
 import {
   getDisplayCourseName,
   getAssignmentPrefix,
@@ -15,7 +15,7 @@ import {
   getCoursePrefix,
   getCourseColor,
   openCourseChat,
-  learnlinkNow,
+  learnlightNow,
 } from './utils';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { cn } from '~/utils';
@@ -23,10 +23,10 @@ import { cn } from '~/utils';
 type CourseTab = 'overview' | 'assignments';
 
 type AssignmentBuckets = {
-  upNext: LearnLinkAssignment[];
-  overdue: LearnLinkAssignment[];
-  thisWeek: LearnLinkAssignment[];
-  later: LearnLinkAssignment[];
+  upNext: LearnLightAssignment[];
+  overdue: LearnLightAssignment[];
+  thisWeek: LearnLightAssignment[];
+  later: LearnLightAssignment[];
 };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -41,11 +41,11 @@ const smartPromptKeys: TranslationKeys[] = [
   'com_ui_course_prompt_plan',
 ];
 
-function bucketAssignments(assignments: LearnLinkAssignment[], now: number): AssignmentBuckets {
-  const overdue: LearnLinkAssignment[] = [];
-  const thisWeek: LearnLinkAssignment[] = [];
-  const later: LearnLinkAssignment[] = [];
-  const undated: LearnLinkAssignment[] = [];
+function bucketAssignments(assignments: LearnLightAssignment[], now: number): AssignmentBuckets {
+  const overdue: LearnLightAssignment[] = [];
+  const thisWeek: LearnLightAssignment[] = [];
+  const later: LearnLightAssignment[] = [];
+  const undated: LearnLightAssignment[] = [];
 
   for (const assignment of assignments) {
     const due = assignment.dueAt != null ? Date.parse(assignment.dueAt) : Number.NaN;
@@ -60,7 +60,7 @@ function bucketAssignments(assignments: LearnLinkAssignment[], now: number): Ass
     }
   }
 
-  const byDueAsc = (a: LearnLinkAssignment, b: LearnLinkAssignment) =>
+  const byDueAsc = (a: LearnLightAssignment, b: LearnLightAssignment) =>
     Date.parse(a.dueAt ?? '') - Date.parse(b.dueAt ?? '');
   overdue.sort((a, b) => byDueAsc(b, a));
   thisWeek.sort(byDueAsc);
@@ -83,7 +83,7 @@ function getDueLabel(
   if (Number.isNaN(due.getTime())) {
     return null;
   }
-  const now = learnlinkNow();
+  const now = learnlightNow();
   if (isSameDay(due, now)) {
     return localize('com_ui_due_today');
   }
@@ -107,7 +107,7 @@ function AssignmentRow({
   dueLabel,
   onChat,
 }: {
-  assignment: LearnLinkAssignment;
+  assignment: LearnLightAssignment;
   dueLabel: string | null;
   onChat: () => void;
 }) {
@@ -124,7 +124,7 @@ function AssignmentRow({
   );
 }
 
-function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: string } }) {
+function CourseView({ course }: { course: LearnLightCourseIdentity & { name: string } }) {
   const localize = useLocalize();
   const navigate = useNavigate();
   const { newConversation } = useNewConvo();
@@ -135,14 +135,14 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
   );
 
   const buckets = useMemo(
-    () => bucketAssignments(materials?.assignments ?? [], learnlinkNow().getTime()),
+    () => bucketAssignments(materials?.assignments ?? [], learnlightNow().getTime()),
     [materials],
   );
 
   const displayName = getDisplayCourseName(course.name);
   const color = getCourseColor(course.canvasCourseId);
 
-  const startAssignmentChat = (assignment: LearnLinkAssignment) => {
+  const startAssignmentChat = (assignment: LearnLightAssignment) => {
     openCourseChat(navigate, newConversation, course, {
       promptPrefix: getAssignmentPrefix(course, assignment),
       greeting: localize('com_ui_assignment_chat_greeting', { name: assignment.name }),
@@ -177,7 +177,7 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
     { key: 'assignments', label: localize('com_ui_assignments') },
   ];
 
-  const renderRows = (assignments: LearnLinkAssignment[]) => (
+  const renderRows = (assignments: LearnLightAssignment[]) => (
     <div className="flex flex-col gap-1.5">
       {assignments.map((assignment) => (
         <AssignmentRow
@@ -190,7 +190,7 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
     </div>
   );
 
-  const assignmentGroups: Array<{ key: TranslationKeys; assignments: LearnLinkAssignment[] }> = [
+  const assignmentGroups: Array<{ key: TranslationKeys; assignments: LearnLightAssignment[] }> = [
     { key: 'com_ui_overdue', assignments: buckets.overdue },
     { key: 'com_ui_this_week', assignments: buckets.thisWeek },
     { key: 'com_ui_later', assignments: buckets.later },

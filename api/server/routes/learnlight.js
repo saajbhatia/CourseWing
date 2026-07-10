@@ -4,30 +4,32 @@ const { requireJwtAuth } = require('~/server/middleware');
 const { updateUserPluginAuth, deleteUserPluginAuth } = require('~/server/services/PluginService');
 const {
   serviceFetch,
-  getLearnLinkTenantId,
-  LEARNLINK_PLUGIN_KEY,
+  getLearnLightTenantId,
+  LEARNLIGHT_PLUGIN_KEY,
   CANVAS_TOKEN_FIELD,
   CANVAS_TENANT_FIELD,
-} = require('~/server/services/LearnLink');
+  LEGACY_CANVAS_TOKEN_FIELD,
+  LEGACY_CANVAS_TENANT_FIELD,
+} = require('~/server/services/LearnLight');
 
 const router = express.Router();
 router.use(requireJwtAuth);
 
 router.get('/canvas', async (req, res) => {
   try {
-    const tenantId = await getLearnLinkTenantId(req.user.id);
+    const tenantId = await getLearnLightTenantId(req.user.id);
     if (!tenantId) {
       return res.json({ connected: false });
     }
 
-    const { ok, body } = await serviceFetch(`/api/learnlink/tenants/${tenantId}`);
+    const { ok, body } = await serviceFetch(`/api/learnlight/tenants/${tenantId}`);
     if (!ok) {
       return res.json({ connected: false, stale: true });
     }
 
     return res.json({ connected: true, ...body });
   } catch (error) {
-    logger.error('[learnlink/canvas] Failed to fetch connection status', error);
+    logger.error('[learnlight/canvas] Failed to fetch connection status', error);
     return res.status(502).json({ message: 'Canvas service unavailable' });
   }
 });
@@ -39,7 +41,7 @@ router.put('/canvas', async (req, res) => {
   }
 
   try {
-    const { ok, status, body } = await serviceFetch('/api/learnlink/tenants', {
+    const { ok, status, body } = await serviceFetch('/api/learnlight/tenants', {
       method: 'POST',
       body: JSON.stringify({ token, baseUrl: req.body?.baseUrl }),
     });
@@ -50,17 +52,17 @@ router.put('/canvas', async (req, res) => {
         .json({ message: body?.error ?? 'Canvas rejected the token' });
     }
 
-    await updateUserPluginAuth(req.user.id, CANVAS_TOKEN_FIELD, LEARNLINK_PLUGIN_KEY, token);
+    await updateUserPluginAuth(req.user.id, CANVAS_TOKEN_FIELD, LEARNLIGHT_PLUGIN_KEY, token);
     await updateUserPluginAuth(
       req.user.id,
       CANVAS_TENANT_FIELD,
-      LEARNLINK_PLUGIN_KEY,
+      LEARNLIGHT_PLUGIN_KEY,
       body.tenantId,
     );
 
     return res.json({ connected: true, ...body });
   } catch (error) {
-    logger.error('[learnlink/canvas] Failed to connect Canvas account', error);
+    logger.error('[learnlight/canvas] Failed to connect Canvas account', error);
     return res.status(502).json({ message: 'Canvas service unavailable' });
   }
 });
@@ -69,9 +71,11 @@ router.delete('/canvas', async (req, res) => {
   try {
     await deleteUserPluginAuth(req.user.id, CANVAS_TOKEN_FIELD);
     await deleteUserPluginAuth(req.user.id, CANVAS_TENANT_FIELD);
+    await deleteUserPluginAuth(req.user.id, LEGACY_CANVAS_TOKEN_FIELD);
+    await deleteUserPluginAuth(req.user.id, LEGACY_CANVAS_TENANT_FIELD);
     return res.json({ connected: false });
   } catch (error) {
-    logger.error('[learnlink/canvas] Failed to disconnect Canvas account', error);
+    logger.error('[learnlight/canvas] Failed to disconnect Canvas account', error);
     return res.status(500).json({ message: 'Failed to disconnect' });
   }
 });

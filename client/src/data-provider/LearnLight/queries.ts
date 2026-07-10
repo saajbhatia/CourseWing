@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useCanvasConnectionQuery } from './canvas';
 
-export type LearnLinkCourseSummary = {
+export type LearnLightCourseSummary = {
   id: string;
   canvasCourseId: number;
   name: string;
@@ -18,7 +18,7 @@ export type LearnLinkCourseSummary = {
   fileCount: number;
 };
 
-export type LearnLinkAssignment = {
+export type LearnLightAssignment = {
   id: string;
   canvasAssignmentId: number;
   courseId: string;
@@ -28,7 +28,7 @@ export type LearnLinkAssignment = {
   htmlUrl: string | null;
 };
 
-export type LearnLinkModule = {
+export type LearnLightModule = {
   id: string;
   canvasModuleId: number;
   courseId: string;
@@ -36,7 +36,7 @@ export type LearnLinkModule = {
   position: number | null;
 };
 
-export type LearnLinkCourseFile = {
+export type LearnLightCourseFile = {
   id: string;
   canvasFileId: number;
   courseId: string;
@@ -47,28 +47,28 @@ export type LearnLinkCourseFile = {
   updatedAt: string | null;
 };
 
-export type LearnLinkCourseWithMaterials = Omit<
-  LearnLinkCourseSummary,
+export type LearnLightCourseWithMaterials = Omit<
+  LearnLightCourseSummary,
   'assignmentCount' | 'moduleCount' | 'fileCount'
 > & {
-  assignments: LearnLinkAssignment[];
-  modules: LearnLinkModule[];
-  files: LearnLinkCourseFile[];
+  assignments: LearnLightAssignment[];
+  modules: LearnLightModule[];
+  files: LearnLightCourseFile[];
 };
 
-export const learnLinkBaseUrl = (
-  import.meta.env.VITE_LEARNLINK_CANVAS_SERVICE_URL || 'http://localhost:3333'
+export const learnLightBaseUrl = (
+  import.meta.env.VITE_LEARNLIGHT_CANVAS_SERVICE_URL || 'http://localhost:3333'
 ).replace(/\/+$/, '');
 
-async function fetchLearnLink<T>(path: string, tenantId?: string): Promise<T> {
+async function fetchLearnLight<T>(path: string, tenantId?: string): Promise<T> {
   const headers: Record<string, string> = {};
   if (tenantId) {
     headers['X-Tenant-Id'] = tenantId;
   }
-  const response = await fetch(`${learnLinkBaseUrl}${path}`, { headers });
+  const response = await fetch(`${learnLightBaseUrl}${path}`, { headers });
 
   if (!response.ok) {
-    throw new Error(`LearnLink request failed: ${response.status}`);
+    throw new Error(`LearnLight request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -83,11 +83,11 @@ function useTenantId(): { tenantId: string | undefined; ready: boolean } {
   };
 }
 
-export function useCurrentCoursesQuery(): UseQueryResult<LearnLinkCourseSummary[]> {
+export function useCurrentCoursesQuery(): UseQueryResult<LearnLightCourseSummary[]> {
   const { tenantId, ready } = useTenantId();
-  return useQuery<LearnLinkCourseSummary[]>(
-    ['learnlink', 'current-courses', learnLinkBaseUrl, tenantId ?? 'default'],
-    () => fetchLearnLink<LearnLinkCourseSummary[]>('/api/learnlink/courses/current', tenantId),
+  return useQuery<LearnLightCourseSummary[]>(
+    ['learnlight', 'current-courses', learnLightBaseUrl, tenantId ?? 'default'],
+    () => fetchLearnLight<LearnLightCourseSummary[]>('/api/learnlight/courses/current', tenantId),
     {
       staleTime: 30000,
       cacheTime: 300000,
@@ -99,11 +99,11 @@ export function useCurrentCoursesQuery(): UseQueryResult<LearnLinkCourseSummary[
 
 export function useCourseMaterialsQuery(
   canvasCourseId: number | null,
-): UseQueryResult<LearnLinkCourseWithMaterials | undefined> {
+): UseQueryResult<LearnLightCourseWithMaterials | undefined> {
   const { tenantId, ready } = useTenantId();
-  return useQuery<LearnLinkCourseWithMaterials[], Error, LearnLinkCourseWithMaterials | undefined>(
-    ['learnlink', 'course-materials', learnLinkBaseUrl, tenantId ?? 'default'],
-    () => fetchLearnLink<LearnLinkCourseWithMaterials[]>('/api/learnlink/courses', tenantId),
+  return useQuery<LearnLightCourseWithMaterials[], Error, LearnLightCourseWithMaterials | undefined>(
+    ['learnlight', 'course-materials', learnLightBaseUrl, tenantId ?? 'default'],
+    () => fetchLearnLight<LearnLightCourseWithMaterials[]>('/api/learnlight/courses', tenantId),
     {
       staleTime: 300000,
       cacheTime: 600000,

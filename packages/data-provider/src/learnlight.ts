@@ -34,19 +34,31 @@ export type AssistanceLevel = (typeof assistanceLevels)[number];
 
 export const defaultAssistanceLevel: AssistanceLevel = 'full';
 
-export const learnLinkPersonas = ['socratic', 'direct', 'storyteller', 'encourager'] as const;
+export const learnLightPersonas = ['socratic', 'direct', 'storyteller', 'encourager'] as const;
 
-export type LearnLinkPersona = (typeof learnLinkPersonas)[number];
+export type LearnLightPersona = (typeof learnLightPersonas)[number];
 
-export const LEARNLINK_LEVEL_LINE = 'LearnLink assistance level:';
-export const LEARNLINK_PERSONA_LINE = 'LearnLink persona:';
-export const LEARNLINK_POLICY_MARKER = '[LearnLink assistance policy';
-export const LEARNLINK_TUTOR_MARKER = '[LearnLink tutor';
-export const LEARNLINK_PERSONA_MARKER = '[LearnLink persona';
-export const LEARNLINK_CARD_MARKER = '[LearnLink course context';
+export const LEARNLIGHT_LEVEL_LINE = 'LearnLight assistance level:';
+export const LEARNLIGHT_PERSONA_LINE = 'LearnLight persona:';
+export const LEARNLIGHT_POLICY_MARKER = '[LearnLight assistance policy';
+export const LEARNLIGHT_TUTOR_MARKER = '[LearnLight tutor';
+export const LEARNLIGHT_PERSONA_MARKER = '[LearnLight persona';
+export const LEARNLIGHT_CARD_MARKER = '[LearnLight course context';
 
-const LEVEL_LINE_PATTERN = /^LearnLink assistance level:\s*(discuss|hints|worked|full)\s*$/im;
-const PERSONA_LINE_PATTERN = /^LearnLink persona:\s*(socratic|direct|storyteller|encourager)\s*$/im;
+/** Pre-rename ("LearnLink") markers still stored in existing conversations' prompt prefixes. */
+const LEGACY_LEVEL_LINE = 'LearnLink assistance level:';
+const LEGACY_PERSONA_LINE = 'LearnLink persona:';
+const LEGACY_BLOCK_MARKERS = [
+  '[LearnLink assistance policy',
+  '[LearnLink tutor',
+  '[LearnLink persona',
+  '[LearnLink course context',
+];
+
+const LEVEL_LINE_PATTERN =
+  /^LearnLi(?:ght|nk) assistance level:\s*(discuss|hints|worked|full)\s*$/im;
+const PERSONA_LINE_PATTERN =
+  /^LearnLi(?:ght|nk) persona:\s*(socratic|direct|storyteller|encourager)\s*$/im;
 
 export function isAssistanceLevel(value?: string | null): value is AssistanceLevel {
   return assistanceLevels.includes(value as AssistanceLevel);
@@ -63,17 +75,20 @@ export function extractAssistanceLevel(promptPrefix?: string | null): Assistance
 }
 
 /**
- * Removes server-appended LearnLink blocks (assistance policy, course card) from a
+ * Removes server-appended LearnLight blocks (assistance policy, course card) from a
  * promptPrefix, leaving only the client-authored base prefix. Blocks are always the
  * suffix of the prefix, so everything from the earliest marker onward is dropped.
  */
-export function stripLearnLinkBlocks(promptPrefix: string): string {
+export function stripLearnLightBlocks(promptPrefix: string): string {
   const indices = [
-    promptPrefix.indexOf(LEARNLINK_POLICY_MARKER),
-    promptPrefix.indexOf(LEARNLINK_TUTOR_MARKER),
-    promptPrefix.indexOf(LEARNLINK_PERSONA_MARKER),
-    promptPrefix.indexOf(LEARNLINK_CARD_MARKER),
-  ].filter((index) => index !== -1);
+    LEARNLIGHT_POLICY_MARKER,
+    LEARNLIGHT_TUTOR_MARKER,
+    LEARNLIGHT_PERSONA_MARKER,
+    LEARNLIGHT_CARD_MARKER,
+    ...LEGACY_BLOCK_MARKERS,
+  ]
+    .map((marker) => promptPrefix.indexOf(marker))
+    .filter((index) => index !== -1);
 
   if (indices.length === 0) {
     return promptPrefix.trimEnd();
@@ -91,28 +106,28 @@ export function setAssistanceLevelInPrefix(
   promptPrefix: string | null | undefined,
   level: AssistanceLevel,
 ): string {
-  const base = stripLearnLinkBlocks(promptPrefix ?? '')
+  const base = stripLearnLightBlocks(promptPrefix ?? '')
     .split('\n')
-    .filter((line) => !line.startsWith(LEARNLINK_LEVEL_LINE))
+    .filter((line) => !line.startsWith(LEARNLIGHT_LEVEL_LINE) && !line.startsWith(LEGACY_LEVEL_LINE))
     .join('\n')
     .trimEnd();
 
-  const levelLine = `${LEARNLINK_LEVEL_LINE} ${level}`;
+  const levelLine = `${LEARNLIGHT_LEVEL_LINE} ${level}`;
   return base ? `${base}\n${levelLine}` : levelLine;
 }
 
-export function isLearnLinkPersona(value?: string | null): value is LearnLinkPersona {
-  return learnLinkPersonas.includes(value as LearnLinkPersona);
+export function isLearnLightPersona(value?: string | null): value is LearnLightPersona {
+  return learnLightPersonas.includes(value as LearnLightPersona);
 }
 
-export function extractPersona(promptPrefix?: string | null): LearnLinkPersona | null {
+export function extractPersona(promptPrefix?: string | null): LearnLightPersona | null {
   if (!promptPrefix) {
     return null;
   }
 
   const match = PERSONA_LINE_PATTERN.exec(promptPrefix);
   const persona = match?.[1]?.toLowerCase();
-  return isLearnLinkPersona(persona) ? persona : null;
+  return isLearnLightPersona(persona) ? persona : null;
 }
 
 /**
@@ -121,11 +136,13 @@ export function extractPersona(promptPrefix?: string | null): LearnLinkPersona |
  */
 export function setPersonaInPrefix(
   promptPrefix: string | null | undefined,
-  persona: LearnLinkPersona | null,
+  persona: LearnLightPersona | null,
 ): string {
-  const base = stripLearnLinkBlocks(promptPrefix ?? '')
+  const base = stripLearnLightBlocks(promptPrefix ?? '')
     .split('\n')
-    .filter((line) => !line.startsWith(LEARNLINK_PERSONA_LINE))
+    .filter(
+      (line) => !line.startsWith(LEARNLIGHT_PERSONA_LINE) && !line.startsWith(LEGACY_PERSONA_LINE),
+    )
     .join('\n')
     .trimEnd();
 
@@ -133,6 +150,6 @@ export function setPersonaInPrefix(
     return base;
   }
 
-  const personaLine = `${LEARNLINK_PERSONA_LINE} ${persona}`;
+  const personaLine = `${LEARNLIGHT_PERSONA_LINE} ${persona}`;
   return base ? `${base}\n${personaLine}` : personaLine;
 }

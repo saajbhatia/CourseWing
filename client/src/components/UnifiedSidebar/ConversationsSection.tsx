@@ -25,8 +25,8 @@ import {
   usePendingCourse,
   clearPendingCourse,
   iconButtonClassName,
-} from '~/components/LearnLink/utils';
-import { recordCourseChat, useCourseChatMap } from '~/components/LearnLink/chats';
+} from '~/components/LearnLight/utils';
+import { recordCourseChat, useCourseChatMap } from '~/components/LearnLight/chats';
 import {
   useConversationsInfiniteQuery,
   useGetConvoIdQuery,
@@ -35,7 +35,7 @@ import {
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
-import CoursePanel from '~/components/LearnLink/CoursePanel';
+import CoursePanel from '~/components/LearnLight/CoursePanel';
 import { Conversations } from '~/components/Conversations';
 import Convo from '~/components/Conversations/Convo';
 import SearchBar from '~/components/Nav/SearchBar';

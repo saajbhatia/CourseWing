@@ -1,16 +1,16 @@
-export type LearnLinkCourseRef = {
+export type LearnLightCourseRef = {
   canvasCourseId: number;
   name: string;
 };
 
-export type LearnLinkAssignmentLink = {
+export type LearnLightAssignmentLink = {
   title: string;
   type: 'file' | 'external' | 'link';
   canvasFileId?: number;
   url?: string;
 };
 
-export type LearnLinkRubricLine = {
+export type LearnLightRubricLine = {
   criterion: string;
   pointsPossible: number;
   countsTowardScore: boolean;
@@ -20,13 +20,13 @@ export type LearnLinkRubricLine = {
   ratingScale?: Array<{ label: string; points: number; detail?: string }>;
 };
 
-export type LearnLinkTeacherComment = {
+export type LearnLightTeacherComment = {
   author: string | null;
   comment: string;
   at: string | null;
 };
 
-export type LearnLinkAssignment = {
+export type LearnLightAssignment = {
   canvasAssignmentId: number;
   courseId: string;
   name: string;
@@ -38,62 +38,62 @@ export type LearnLinkAssignment = {
   htmlUrl: string | null;
   assignmentGroup?: string;
   description?: string;
-  links?: LearnLinkAssignmentLink[];
-  rubric?: LearnLinkRubricLine[];
-  teacherComments?: LearnLinkTeacherComment[];
+  links?: LearnLightAssignmentLink[];
+  rubric?: LearnLightRubricLine[];
+  teacherComments?: LearnLightTeacherComment[];
   courseName?: string | null;
 };
 
-export type LearnLinkGradeSummary = {
+export type LearnLightGradeSummary = {
   currentScore: number | null;
   currentGrade: string | null;
   weightedGrading: boolean;
   groupWeights: Array<{ name: string; weightPercent: number | null }> | null;
 };
 
-export type LearnLinkAssignmentsResponse = {
-  course?: LearnLinkCourseRef;
-  courses?: Array<LearnLinkCourseRef & { currentScore?: number | null }>;
-  gradeSummary?: LearnLinkGradeSummary;
+export type LearnLightAssignmentsResponse = {
+  course?: LearnLightCourseRef;
+  courses?: Array<LearnLightCourseRef & { currentScore?: number | null }>;
+  gradeSummary?: LearnLightGradeSummary;
   totalMatching?: number;
   returned?: number;
   truncated?: boolean;
-  assignments: LearnLinkAssignment[];
+  assignments: LearnLightAssignment[];
 };
 
-export type LearnLinkModuleItem = {
+export type LearnLightModuleItem = {
   title: string;
   type: string | null;
   canvasFileId?: number;
 };
 
-export type LearnLinkModule = {
+export type LearnLightModule = {
   name: string;
   position: number | null;
-  items: LearnLinkModuleItem[];
+  items: LearnLightModuleItem[];
 };
 
-export type LearnLinkModulesResponse = {
-  course: LearnLinkCourseRef;
+export type LearnLightModulesResponse = {
+  course: LearnLightCourseRef;
   syllabus: string | null;
-  modules: LearnLinkModule[];
+  modules: LearnLightModule[];
 };
 
-export type LearnLinkAnnouncementPreview = {
+export type LearnLightAnnouncementPreview = {
   title: string;
   author: string | null;
   postedAt: string | null;
   preview: string | null;
 };
 
-export type LearnLinkCourseContext = {
-  course: LearnLinkCourseRef & {
+export type LearnLightCourseContext = {
+  course: LearnLightCourseRef & {
     courseCode: string | null;
     termName: string | null;
   };
   hasSyllabus: boolean;
-  upcomingAssignments: LearnLinkAssignment[];
-  recentAnnouncements: LearnLinkAnnouncementPreview[];
+  upcomingAssignments: LearnLightAssignment[];
+  recentAnnouncements: LearnLightAnnouncementPreview[];
   materialCounts: {
     modules: number;
     files: number;
@@ -102,12 +102,12 @@ export type LearnLinkCourseContext = {
   };
   masteryOutcomeCount?: number;
   lastSyncAt: string | null;
-  recentGradedWork?: LearnLinkAssignment[];
-  gradeSummary?: LearnLinkGradeSummary;
+  recentGradedWork?: LearnLightAssignment[];
+  gradeSummary?: LearnLightGradeSummary;
   moduleNames?: string[];
 };
 
-export type LearnLinkOutcome = {
+export type LearnLightOutcome = {
   outcome: string;
   displayName: string | null;
   score: number | null;
@@ -122,35 +122,35 @@ export type LearnLinkOutcome = {
   calculationWeight?: number;
 };
 
-export type LearnLinkCourseMastery = {
-  course: LearnLinkCourseRef;
-  outcomes: LearnLinkOutcome[];
+export type LearnLightCourseMastery = {
+  course: LearnLightCourseRef;
+  outcomes: LearnLightOutcome[];
   note?: string;
 };
 
-export type LearnLinkMasteryResponse =
-  | LearnLinkCourseMastery
-  | { courses: LearnLinkCourseMastery[]; note?: string };
+export type LearnLightMasteryResponse =
+  | LearnLightCourseMastery
+  | { courses: LearnLightCourseMastery[]; note?: string };
 
-export type LearnLinkMaterialKind = 'file' | 'page' | 'syllabus';
+export type LearnLightMaterialKind = 'file' | 'page' | 'syllabus';
 
-export type LearnLinkSearchHit = {
+export type LearnLightSearchHit = {
   materialId: string;
-  kind: LearnLinkMaterialKind;
+  kind: LearnLightMaterialKind;
   title: string;
   courseId: string;
   chunkIndex: number;
   snippet: string;
 };
 
-export type LearnLinkSearchResponse = {
+export type LearnLightSearchResponse = {
   query: string;
-  hits: LearnLinkSearchHit[];
+  hits: LearnLightSearchHit[];
 };
 
-export type LearnLinkMaterialTextResponse = {
+export type LearnLightMaterialTextResponse = {
   materialId: string;
-  kind: LearnLinkMaterialKind;
+  kind: LearnLightMaterialKind;
   title: string;
   status: 'ok' | 'skipped' | 'error';
   error?: string | null;
@@ -158,17 +158,22 @@ export type LearnLinkMaterialTextResponse = {
   page?: number;
   totalPages?: number;
   canvasUrl?: string;
-  links?: LearnLinkAssignmentLink[];
+  links?: LearnLightAssignmentLink[];
   text: string | null;
 };
 
-export type LearnLinkAssignmentFilter = 'upcoming' | 'past' | 'undated' | 'all';
+export type LearnLightAssignmentFilter = 'upcoming' | 'past' | 'undated' | 'all';
 
-export type LearnLinkTenantStatus = {
+export type LearnLightTenantStatus = {
   tenantId: string;
   userName?: string | null;
   baseUrl?: string;
   lastSyncAt: string | null;
   syncing: boolean;
   courseCount: number;
+};
+
+export type LearnLightFeedbackResponse = {
+  feedback?: { id: number; chatShared: boolean };
+  updated?: number;
 };

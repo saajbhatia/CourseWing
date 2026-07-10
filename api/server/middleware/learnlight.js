@@ -1,31 +1,31 @@
 const { logger } = require('@librechat/data-schemas');
 const {
   extractPersona,
-  stripLearnLinkBlocks,
+  stripLearnLightBlocks,
   extractAssistanceLevel,
 } = require('librechat-data-provider');
 const {
   buildCourseCard,
-  isLearnLinkEnabled,
+  isLearnLightEnabled,
   buildPersonaPrompt,
   buildLearningDefault,
   getCourseContextSafe,
   extractCanvasCourseId,
   buildAssistancePolicy,
 } = require('@librechat/api');
-const { getLearnLinkTenantId } = require('~/server/services/LearnLink');
+const { getLearnLightTenantId } = require('~/server/services/LearnLight');
 
 /**
- * Rebuilds the LearnLink sections of the request's promptPrefix each turn:
- * - the assistance policy matching the `LearnLink assistance level: <level>` marker line
+ * Rebuilds the LearnLight sections of the request's promptPrefix each turn:
+ * - the assistance policy matching the `LearnLight assistance level: <level>` marker line
  *   (the tutor-shaped learning default when no marker is present),
- * - the persona voice matching the `LearnLink persona: <persona>` marker line,
+ * - the persona voice matching the `LearnLight persona: <persona>` marker line,
  * - a compact Canvas course card when the conversation carries a `Canvas course ID: <id>`
  *   marker (rebuilt from the local sync service so due dates and announcements stay current).
  * Blocks appended on previous turns are stripped first to keep the prefix idempotent.
  */
-async function learnLinkContext(req, res, next) {
-  if (!isLearnLinkEnabled()) {
+async function learnLightContext(req, res, next) {
+  if (!isLearnLightEnabled()) {
     return next();
   }
 
@@ -35,7 +35,7 @@ async function learnLinkContext(req, res, next) {
   const persona = extractPersona(promptPrefix);
 
   const sections = [
-    stripLearnLinkBlocks(promptPrefix ?? ''),
+    stripLearnLightBlocks(promptPrefix ?? ''),
     markedLevel == null ? buildLearningDefault() : buildAssistancePolicy(markedLevel),
   ];
 
@@ -45,13 +45,13 @@ async function learnLinkContext(req, res, next) {
 
   if (canvasCourseId != null) {
     try {
-      const tenantId = await getLearnLinkTenantId(req.user?.id);
+      const tenantId = await getLearnLightTenantId(req.user?.id);
       const context = await getCourseContextSafe(canvasCourseId, { tenantId });
       if (context) {
         sections.push(buildCourseCard(context));
       }
     } catch (error) {
-      logger.warn('[learnLinkContext] Failed to build course card', error);
+      logger.warn('[learnLightContext] Failed to build course card', error);
     }
   }
 
@@ -60,4 +60,4 @@ async function learnLinkContext(req, res, next) {
   next();
 }
 
-module.exports = learnLinkContext;
+module.exports = learnLightContext;

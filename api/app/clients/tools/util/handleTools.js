@@ -6,8 +6,8 @@ const {
   createSafeUser,
   mcpToolPattern,
   loadWebSearchAuth,
-  createLearnLinkTool,
-  isLearnLinkToolKey,
+  createLearnLightTool,
+  isLearnLightToolKey,
   buildInlineMemoryTool,
   getCodeApiAuthHeaders,
   buildImageToolContext,
@@ -50,7 +50,7 @@ const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
-const { getLearnLinkTenantId } = require('~/server/services/LearnLink');
+const { getLearnLightTenantId } = require('~/server/services/LearnLight');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
@@ -363,10 +363,15 @@ const loadTools = async ({
         });
       };
       continue;
-    } else if (isLearnLinkToolKey(tool)) {
+    } else if (isLearnLightToolKey(tool)) {
       requestedTools[tool] = async () => {
-        const tenantId = await getLearnLinkTenantId(options.req?.user?.id ?? user);
-        return createLearnLinkTool(tool, { tenantId });
+        const tenantId = await getLearnLightTenantId(options.req?.user?.id ?? user);
+        return createLearnLightTool(tool, {
+          tenantId,
+          conversationId: options.req?.body?.conversationId,
+          userName: options.req?.user?.name ?? options.req?.user?.username,
+          userEmail: options.req?.user?.email,
+        });
       };
       continue;
     } else if (tool === SET_MEMORY_TOOL_NAME || tool === DELETE_MEMORY_TOOL_NAME) {

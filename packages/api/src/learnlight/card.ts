@@ -1,15 +1,15 @@
-import type { LearnLinkAssignment, LearnLinkCourseContext } from './types';
-import { getLearnLinkNow, getLearnLinkTimezone } from './config';
+import type { LearnLightAssignment, LearnLightCourseContext } from './types';
+import { getLearnLightNow, getLearnLightTimezone } from './config';
 
 const MAX_CARD_ASSIGNMENTS = 5;
 
 export { extractCanvasCourseId } from 'librechat-data-provider';
 
-export function buildCourseCard(context: LearnLinkCourseContext): string {
+export function buildCourseCard(context: LearnLightCourseContext): string {
   const { course, hasSyllabus, upcomingAssignments, recentAnnouncements, materialCounts } = context;
-  const today = getLearnLinkNow();
+  const today = getLearnLightNow();
   const lines: string[] = [
-    '[LearnLink course context — synced from Canvas, refreshed automatically]',
+    '[LearnLight course context — synced from Canvas, refreshed automatically]',
     `Today: ${formatDate(today.toISOString())}, ${today.getFullYear()}`,
     `Course: ${course.name}${course.courseCode ? ` (${course.courseCode})` : ''} — Canvas course ID: ${course.canvasCourseId}`,
   ];
@@ -52,7 +52,7 @@ export function buildCourseCard(context: LearnLinkCourseContext): string {
 
   const masteryTool =
     (context.masteryOutcomeCount ?? 0) > 0
-      ? `, learnlink_get_mastery (Learning Mastery — ${context.masteryOutcomeCount} outcomes tracked)`
+      ? `, learnlight_get_mastery (Learning Mastery — ${context.masteryOutcomeCount} outcomes tracked)`
       : '';
 
   if (context.moduleNames != null && context.moduleNames.length > 0) {
@@ -61,7 +61,7 @@ export function buildCourseCard(context: LearnLinkCourseContext): string {
 
   lines.push(
     `Synced materials: ${materialCounts.files} files, ${materialCounts.pages} pages, ${materialCounts.modules} modules (${materialCounts.readableMaterials} readable)${hasSyllabus ? '; syllabus posted' : ''}.`,
-    `Tools: learnlink_get_assignments (assignment details, rubrics + teacher feedback — grades and scores are already listed above, so only call it for details this card lacks), learnlink_get_modules (syllabus + course structure), learnlink_search_materials (find content in course files/pages), learnlink_read_material (read one)${masteryTool}. Answer from the card when it already has what you need; when the student asks about course specifics beyond it — what a unit or exam covers, what was taught, how something was defined in class — look it up with one or two targeted calls instead of answering from general knowledge.`,
+    `Tools: learnlight_get_assignments (assignment details, rubrics + teacher feedback — grades and scores are already listed above, so only call it for details this card lacks), learnlight_get_modules (syllabus + course structure), learnlight_search_materials (find content in course files/pages), learnlight_read_material (read one)${masteryTool}. Answer from the card when it already has what you need; when the student asks about course specifics beyond it — what a unit or exam covers, what was taught, how something was defined in class — look it up with one or two targeted calls instead of answering from general knowledge.`,
     "When the student asks for a document or link, give them the actual URL from tool results as a markdown link (canvasUrl for the material itself, or an entry from its links array). These open through the student's own school login — including Office365/SharePoint ones — so share them directly instead of describing where to click in Canvas.",
     'Only when an answer draws on course materials, end it with a one-line "Sources:" footer linking each material you actually used (markdown links via canvasUrl). If the materials conflict or you are not confident the answer matches what was taught in class, add a short caution (e.g. "low confidence — confirm with your teacher"). When you answered from your own knowledge, write no footer and no attribution at all — never "Sources: general knowledge".',
   );
@@ -69,7 +69,7 @@ export function buildCourseCard(context: LearnLinkCourseContext): string {
   return lines.join('\n');
 }
 
-function formatGradedLine(assignment: LearnLinkAssignment): string {
+function formatGradedLine(assignment: LearnLightAssignment): string {
   const parts = [assignment.name];
 
   if (assignment.score != null && assignment.pointsPossible != null && assignment.pointsPossible > 0) {
@@ -89,7 +89,7 @@ function formatGradedLine(assignment: LearnLinkAssignment): string {
   return `- ${parts.join(' — ')}`;
 }
 
-function formatAssignmentLine(assignment: LearnLinkAssignment): string {
+function formatAssignmentLine(assignment: LearnLightAssignment): string {
   const parts = [assignment.name];
   const due = formatDate(assignment.dueAt, true);
 
@@ -117,7 +117,7 @@ function formatDate(isoDate: string | null | undefined, withTime = false): strin
   }
 
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: getLearnLinkTimezone(),
+    timeZone: getLearnLightTimezone(),
     weekday: 'short',
     month: 'short',
     day: 'numeric',

@@ -8,7 +8,7 @@ import { useSyncExternalStore } from 'react';
  */
 export type CourseChatMap = Record<string, number>;
 
-const MAP_EVENT = 'learnlink:course-chats-changed';
+const MAP_EVENT = 'learnlight:course-chats-changed';
 
 let overlay: CourseChatMap = {};
 

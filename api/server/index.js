@@ -24,7 +24,7 @@ const {
   initializeFileStorage,
   initializeDeploymentSkills,
   maybeInjectQueryDevtoolsBootstrap,
-  isLearnLinkEnabled,
+  isLearnLightEnabled,
   preAuthTenantMiddleware,
   setupGracefulShutdown,
   updateInterfacePermissions,
@@ -39,7 +39,7 @@ const {
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
 const createValidateImageRequest = require('./middleware/validateImageRequest');
-const { backfillCourseChats } = require('./services/LearnLink');
+const { backfillCourseChats } = require('./services/LearnLight');
 const { startExpiredFileSweep } = require('./services/Files/process');
 const { initializeGitHubSkillSync } = require('./services/Skills/sync');
 const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
@@ -121,7 +121,7 @@ const startServer = async () => {
   runAsSystem(sweepOrphanedPreviews).catch((err) => {
     logger.error('[sweepOrphanedPreviews] Background sweep failed:', err);
   });
-  if (isLearnLinkEnabled()) {
+  if (isLearnLightEnabled()) {
     runAsSystem(backfillCourseChats).catch((err) => {
       logger.error('[backfillCourseChats] Background backfill failed:', err);
     });
@@ -253,7 +253,7 @@ const startServer = async () => {
   app.use('/api/admin/audit-log', routes.adminAuditLog);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);
-  app.use('/api/learnlink', routes.learnlink);
+  app.use('/api/learnlight', routes.learnlight);
   app.use('/api/api-keys', routes.apiKeys);
   app.use('/api/user', routes.user);
   app.use('/api/search', routes.search);

@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
-import type { LearnLinkAssignment, LearnLinkCourseSummary } from '~/data-provider/LearnLink';
+import type { LearnLightAssignment, LearnLightCourseSummary } from '~/data-provider/LearnLight';
 import { Constants } from 'librechat-data-provider';
 
-export type LearnLinkCourseIdentity = Pick<
-  LearnLinkCourseSummary,
+export type LearnLightCourseIdentity = Pick<
+  LearnLightCourseSummary,
   'canvasCourseId' | 'name' | 'courseCode'
 >;
 
@@ -19,10 +19,10 @@ const courseColors = [
   { background: '#a43f75', foreground: '#ffffff' },
 ];
 
-const fakeNowMs = Date.parse(import.meta.env.VITE_LEARNLINK_FAKE_NOW ?? '');
+const fakeNowMs = Date.parse(import.meta.env.VITE_LEARNLIGHT_FAKE_NOW ?? '');
 
-/** Demo/testing override: `VITE_LEARNLINK_FAKE_NOW` makes course views pretend "now" is that instant. */
-export function learnlinkNow(): Date {
+/** Demo/testing override: `VITE_LEARNLIGHT_FAKE_NOW` makes course views pretend "now" is that instant. */
+export function learnlightNow(): Date {
   return Number.isNaN(fakeNowMs) ? new Date() : new Date(fakeNowMs);
 }
 
@@ -45,7 +45,7 @@ export function getDisplayCourseName(name: string): string {
     .trim();
 }
 
-export function getCoursePrefix(course: LearnLinkCourseIdentity): string {
+export function getCoursePrefix(course: LearnLightCourseIdentity): string {
   return [
     `Current Canvas course: ${course.name}`,
     `Canvas course ID: ${course.canvasCourseId}`,
@@ -57,8 +57,8 @@ export function getCoursePrefix(course: LearnLinkCourseIdentity): string {
 }
 
 export function getAssignmentPrefix(
-  course: LearnLinkCourseIdentity,
-  assignment: LearnLinkAssignment,
+  course: LearnLightCourseIdentity,
+  assignment: LearnLightAssignment,
 ): string {
   return [
     getCoursePrefix(course),
@@ -70,13 +70,13 @@ export function getAssignmentPrefix(
     .join('\n');
 }
 
-export function getReviewPrefix(course: LearnLinkCourseIdentity): string {
+export function getReviewPrefix(course: LearnLightCourseIdentity): string {
   return [
     getCoursePrefix(course),
     'The student has started a Personalized Review session.',
     'Set it up from the course context card alone — it already lists upcoming assessments, recent graded work with scores, and the current grade. Do NOT call assignment, grade, or mastery tools during setup; target the next upcoming quiz, test, or exam from the card (if none is listed, ask what they want to review) and derive weak spots from the graded-work scores, lowest percentages first.',
     'Then run the review interactively, opening with the plan and your first question in the SAME response: a one-paragraph plan naming the focus areas and why, followed by ONE practice question at a time — wait for their answer, give feedback, and adapt difficulty. Prioritize previously missed concepts and long-term retention (mix in older material), not just the most recent unit. End with a short summary of what to study next.',
-    'Use tools when they are needed, not as a ritual: the card covers setup, but when the student asks what the exam covers, about specific course content, or how something was taught in class, look it up (learnlink_get_modules for structure, learnlink_search_materials/learnlink_read_material for content) with one or two targeted calls rather than answering from general knowledge. Never bulk-read materials up front.',
+    'Use tools when they are needed, not as a ritual: the card covers setup, but when the student asks what the exam covers, about specific course content, or how something was taught in class, look it up (learnlight_get_modules for structure, learnlight_search_materials/learnlight_read_material for content) with one or two targeted calls rather than answering from general knowledge. Never bulk-read materials up front.',
   ].join('\n');
 }
 
@@ -101,7 +101,7 @@ export type CourseChatOptions = {
 export function openCourseChat(
   navigate: NavigateFunction,
   newConversation: NewConversationCall,
-  course: LearnLinkCourseIdentity,
+  course: LearnLightCourseIdentity,
   options: CourseChatOptions,
 ): void {
   if (options.greeting) {
@@ -122,9 +122,9 @@ export function openCourseChat(
   navigate(`/c/${Constants.NEW_CONVO}?${params.toString()}`, { state: { focusChat: true } });
 }
 
-const PENDING_COURSE_KEY = 'learnlink:pendingCourse';
-const PENDING_GREETING_KEY = 'learnlink:pendingGreeting';
-const PENDING_COURSE_EVENT = 'learnlink:pending-course-changed';
+const PENDING_COURSE_KEY = 'learnlight:pendingCourse';
+const PENDING_GREETING_KEY = 'learnlight:pendingGreeting';
+const PENDING_COURSE_EVENT = 'learnlight:pending-course-changed';
 
 export function getPendingCourse(): number | null {
   const raw = sessionStorage.getItem(PENDING_COURSE_KEY);
