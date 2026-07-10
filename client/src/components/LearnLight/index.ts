@@ -1,4 +1,5 @@
 export { default as PersonaSelector } from './PersonaSelector';
+export { default as FeedbackButton } from './FeedbackButton';
 export { default as CoursePanel } from './CoursePanel';
 export { default as CoursePage } from './CoursePage';
 export * from './utils';

@@ -22,6 +22,7 @@ import {
   useAssistantsMapContext,
 } from '~/Providers';
 import PersonaSelector from '~/components/LearnLight/PersonaSelector';
+import FeedbackButton from '~/components/LearnLight/FeedbackButton';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import { cn, getModelSpec, removeFocusRings } from '~/utils';
 import { useGetStartupConfig } from '~/data-provider';
@@ -377,6 +378,7 @@ const ChatForm = memo(function ChatForm({
                 />
               </div>
               <PersonaSelector />
+              <FeedbackButton />
               <BadgeRow
                 showEphemeralBadges={
                   !!endpoint &&
