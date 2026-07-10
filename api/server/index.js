@@ -24,6 +24,7 @@ const {
   initializeFileStorage,
   initializeDeploymentSkills,
   maybeInjectQueryDevtoolsBootstrap,
+  isLearnLinkEnabled,
   preAuthTenantMiddleware,
   setupGracefulShutdown,
   updateInterfacePermissions,
@@ -38,6 +39,7 @@ const {
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
 const createValidateImageRequest = require('./middleware/validateImageRequest');
+const { backfillCourseChats } = require('./services/LearnLink');
 const { startExpiredFileSweep } = require('./services/Files/process');
 const { initializeGitHubSkillSync } = require('./services/Skills/sync');
 const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
@@ -119,6 +121,11 @@ const startServer = async () => {
   runAsSystem(sweepOrphanedPreviews).catch((err) => {
     logger.error('[sweepOrphanedPreviews] Background sweep failed:', err);
   });
+  if (isLearnLinkEnabled()) {
+    runAsSystem(backfillCourseChats).catch((err) => {
+      logger.error('[backfillCourseChats] Background backfill failed:', err);
+    });
+  }
   const appConfig = await getAppConfig({ baseOnly: true });
   initializeFileStorage(appConfig);
   await initializeDeploymentSkills({ projectRoot: path.resolve(__dirname, '../..') });

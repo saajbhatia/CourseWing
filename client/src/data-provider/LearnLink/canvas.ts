@@ -1,6 +1,7 @@
 import { request, QueryKeys } from 'librechat-data-provider';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+import type { LearnLinkCourseSummary } from './queries';
 
 export type CanvasConnection = {
   connected: boolean;
@@ -25,7 +26,21 @@ export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
       retry: 1,
       refetchInterval: (data) => (data?.connected === true && data.syncing === true ? 5000 : false),
       onSuccess: (data) => {
-        if (data.connected === true && data.syncing === false) {
+        if (data.connected !== true) {
+          return;
+        }
+        const cachedCourseQueries = queryClient.getQueriesData<LearnLinkCourseSummary[]>([
+          'learnlink',
+          'current-courses',
+        ]);
+        const countMismatch =
+          typeof data.courseCount === 'number' &&
+          cachedCourseQueries.some(
+            ([, courses]) => Array.isArray(courses) && courses.length !== data.courseCount,
+          );
+        /* During a sync, courses land in the store one by one — refresh on every status
+         * poll so the sidebar fills as they arrive instead of waiting for full completion. */
+        if (data.syncing === true || countMismatch) {
           queryClient.invalidateQueries(['learnlink', 'current-courses']);
         }
       },

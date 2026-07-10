@@ -39,6 +39,10 @@ const convoSchema: Schema<IConversation> = new Schema(
       default: null,
       index: true,
     },
+    canvasCourseId: {
+      type: Number,
+      index: true,
+    },
     files: {
       type: [String],
     },

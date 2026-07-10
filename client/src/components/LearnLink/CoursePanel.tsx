@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MessageCircle, Plus } from 'lucide-react';
+import { getConversationCourseId } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import { useCurrentCoursesQuery } from '~/data-provider/LearnLink';
 import {
@@ -49,7 +50,8 @@ export default function CoursePanel({
       conversations.filter(
         (conversation): conversation is TConversation =>
           conversation?.conversationId != null &&
-          chatMap[conversation.conversationId] === canvasCourseId,
+          (chatMap[conversation.conversationId] ?? getConversationCourseId(conversation)) ===
+            canvasCourseId,
       ),
     [conversations, chatMap, canvasCourseId],
   );

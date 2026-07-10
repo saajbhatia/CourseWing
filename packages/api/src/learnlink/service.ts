@@ -7,11 +7,13 @@ import type {
   LearnLinkMaterialTextResponse,
   LearnLinkModulesResponse,
   LearnLinkSearchResponse,
+  LearnLinkTenantStatus,
 } from './types';
 import { getCanvasServiceUrl } from './config';
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const CONTEXT_CACHE_TTL_MS = 60_000;
+const RECENT_GRADED_LIMIT = 8;
 
 const contextCache = new Map<string, { expiresAt: number; value: LearnLinkCourseContext }>();
 
@@ -54,12 +56,65 @@ export async function getCourseContext(
     return cached.value;
   }
 
-  const value = await fetchJson<LearnLinkCourseContext>(
-    `/api/learnlink/courses/${canvasCourseId}/context`,
-    options,
-  );
+  const [value, gradedWork, moduleNames] = await Promise.all([
+    fetchJson<LearnLinkCourseContext>(`/api/learnlink/courses/${canvasCourseId}/context`, options),
+    getRecentGradedWorkSafe(canvasCourseId, options),
+    getModuleNamesSafe(canvasCourseId, options),
+  ]);
+
+  if (gradedWork != null) {
+    value.recentGradedWork = gradedWork.assignments.filter(
+      (assignment) => assignment.score != null,
+    );
+    value.gradeSummary = gradedWork.gradeSummary;
+  }
+  if (moduleNames != null) {
+    value.moduleNames = moduleNames;
+  }
+
   contextCache.set(cacheKey, { expiresAt: Date.now() + CONTEXT_CACHE_TTL_MS, value });
   return value;
+}
+
+async function getModuleNamesSafe(
+  canvasCourseId: number,
+  options?: LearnLinkRequestOptions,
+): Promise<string[] | null> {
+  try {
+    const response = await getModules(canvasCourseId, options);
+    return response.modules
+      .slice()
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((module) => module.name);
+  } catch (error) {
+    logger.warn(
+      `[LearnLink] Failed to fetch module names for course card ${canvasCourseId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+async function getRecentGradedWorkSafe(
+  canvasCourseId: number,
+  options?: LearnLinkRequestOptions,
+): Promise<LearnLinkAssignmentsResponse | null> {
+  try {
+    return await getAssignments({
+      canvasCourseId,
+      filter: 'past',
+      limit: RECENT_GRADED_LIMIT,
+      tenantId: options?.tenantId,
+    });
+  } catch (error) {
+    logger.warn(
+      `[LearnLink] Failed to fetch graded work for course card ${canvasCourseId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }
 
 export function clearCourseContextCache(): void {
@@ -163,6 +218,25 @@ export async function readMaterial(params: {
   return fetchJson<LearnLinkMaterialTextResponse>(query ? `${basePath}?${query}` : basePath, {
     tenantId: params.tenantId,
   });
+}
+
+/** Sync state for a connected Canvas account; null for the shared default tenant or on error. */
+export async function getTenantStatusSafe(
+  tenantId?: string | null,
+): Promise<LearnLinkTenantStatus | null> {
+  if (!tenantId) {
+    return null;
+  }
+  try {
+    return await fetchJson<LearnLinkTenantStatus>(`/api/learnlink/tenants/${tenantId}`);
+  } catch (error) {
+    logger.warn(
+      `[LearnLink] Failed to fetch tenant status for ${tenantId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }
 
 export async function getCourseContextSafe(

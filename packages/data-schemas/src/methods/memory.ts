@@ -9,6 +9,19 @@ const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
+/**
+ * Demo/testing override (`LEARNLINK_FAKE_NOW`): memory timestamps shown to the model
+ * are capped at the fake "now" so they can't reveal the real date.
+ */
+const displayDate = (date: Date): Date => {
+  const fakeNowMs = Date.parse(process.env.LEARNLINK_FAKE_NOW ?? '');
+  if (Number.isNaN(fakeNowMs) || date.getTime() <= fakeNowMs) {
+    return date;
+  }
+
+  return new Date(fakeNowMs);
+};
+
 // Factory function that takes mongoose instance and returns the methods
 export function createMemoryMethods(mongoose: typeof import('mongoose')): {
   setMemory: ({ userId, key, value, tokenCount }: t.SetMemoryParams) => Promise<t.MemoryResult>;
@@ -147,7 +160,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
 
       const withKeys = sortedMemories
         .map((memory, index) => {
-          const date = formatDate(new Date(memory.updated_at!));
+          const date = formatDate(displayDate(new Date(memory.updated_at!)));
           const tokenInfo = memory.tokenCount ? ` [${memory.tokenCount} tokens]` : '';
           return `${index + 1}. [${date}]. ["key": "${memory.key}"]${tokenInfo}. ["value": "${memory.value}"]`;
         })
@@ -155,7 +168,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
 
       const withoutKeys = sortedMemories
         .map((memory, index) => {
-          const date = formatDate(new Date(memory.updated_at!));
+          const date = formatDate(displayDate(new Date(memory.updated_at!)));
           return `${index + 1}. [${date}]. ${memory.value}`;
         })
         .join('\n\n');

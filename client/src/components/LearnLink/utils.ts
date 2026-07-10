@@ -19,6 +19,13 @@ const courseColors = [
   { background: '#a43f75', foreground: '#ffffff' },
 ];
 
+const fakeNowMs = Date.parse(import.meta.env.VITE_LEARNLINK_FAKE_NOW ?? '');
+
+/** Demo/testing override: `VITE_LEARNLINK_FAKE_NOW` makes course views pretend "now" is that instant. */
+export function learnlinkNow(): Date {
+  return Number.isNaN(fakeNowMs) ? new Date() : new Date(fakeNowMs);
+}
+
 export const iconButtonClassName =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-secondary outline-none transition-colors hover:bg-surface-active-alt hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white';
 
@@ -63,6 +70,26 @@ export function getAssignmentPrefix(
     .join('\n');
 }
 
+export function getReviewPrefix(course: LearnLinkCourseIdentity): string {
+  return [
+    getCoursePrefix(course),
+    'The student has started a Personalized Review session.',
+    'Set it up from the course context card alone — it already lists upcoming assessments, recent graded work with scores, and the current grade. Do NOT call assignment, grade, or mastery tools during setup; target the next upcoming quiz, test, or exam from the card (if none is listed, ask what they want to review) and derive weak spots from the graded-work scores, lowest percentages first.',
+    'Then run the review interactively, opening with the plan and your first question in the SAME response: a one-paragraph plan naming the focus areas and why, followed by ONE practice question at a time — wait for their answer, give feedback, and adapt difficulty. Prioritize previously missed concepts and long-term retention (mix in older material), not just the most recent unit. End with a short summary of what to study next.',
+    'Use tools when they are needed, not as a ritual: the card covers setup, but when the student asks what the exam covers, about specific course content, or how something was taught in class, look it up (learnlink_get_modules for structure, learnlink_search_materials/learnlink_read_material for content) with one or two targeted calls rather than answering from general knowledge. Never bulk-read materials up front.',
+  ].join('\n');
+}
+
+/**
+ * Course chats opened via URL params can't use a `spec` param — useQueryParams replaces the
+ * whole preset with the spec's, dropping promptPrefix. Instead carry the "GPT-5.5 (Instant)"
+ * spec's latency-critical settings (librechat.yaml) directly; they merge with promptPrefix.
+ */
+const INSTANT_PRESET_PARAMS = {
+  reasoning_effort: 'none',
+  useResponsesApi: 'true',
+} as const;
+
 export type NewConversationCall = (options?: { disableFocus?: boolean }) => void;
 
 export type CourseChatOptions = {
@@ -84,7 +111,10 @@ export function openCourseChat(
   }
   setPendingCourse(course.canvasCourseId);
   newConversation({ disableFocus: true });
-  const params = new URLSearchParams({ promptPrefix: options.promptPrefix });
+  const params = new URLSearchParams({
+    promptPrefix: options.promptPrefix,
+    ...INSTANT_PRESET_PARAMS,
+  });
   if (options.prompt) {
     params.set('prompt', options.prompt);
     params.set('submit', 'true');

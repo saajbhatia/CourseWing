@@ -66,6 +66,7 @@ jest.mock('~/data-provider', () => ({
     isLoading: false,
     isFetching: false,
   }),
+  useGetConvoIdQuery: () => ({ data: undefined }),
   useTitleGeneration: () => mockUseTitleGeneration(),
   useGetEndpointsQuery: () => ({ data: {}, isLoading: false }),
   useGetStartupConfig: () => ({ data: { modelSpecs: { list: [] } } }),

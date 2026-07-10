@@ -2,7 +2,14 @@ import { z } from 'zod';
 import { logger } from '@librechat/data-schemas';
 import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
-import { getAssignments, getMastery, getModules, readMaterial, searchMaterials } from './service';
+import {
+  getAssignments,
+  getMastery,
+  getModules,
+  getTenantStatusSafe,
+  readMaterial,
+  searchMaterials,
+} from './service';
 
 export const LEARNLINK_GET_ASSIGNMENTS = 'learnlink_get_assignments';
 export const LEARNLINK_GET_MASTERY = 'learnlink_get_mastery';
@@ -51,6 +58,18 @@ export type LearnLinkToolOptions = {
   tenantId?: string | null;
 };
 
+const SYNC_PENDING_MESSAGE =
+  "This student's Canvas account is still syncing — their courses and assignments aren't fully available yet. Tell the student their Canvas data is still syncing (this usually takes a few minutes after connecting) and to check back shortly. Do NOT guess or invent course information in the meantime.";
+
+/** Empty results on a freshly connected account usually mean the first sync hasn't finished, not that the student has no courses. */
+async function syncPendingMessage(tenantId?: string | null): Promise<string | null> {
+  const status = await getTenantStatusSafe(tenantId);
+  if (status != null && (status.syncing || status.lastSyncAt == null)) {
+    return SYNC_PENDING_MESSAGE;
+  }
+  return null;
+}
+
 function createGetAssignmentsTool(toolOptions: LearnLinkToolOptions): DynamicStructuredTool {
   return tool(
     async ({ canvasCourseId, filter, query, dueAfter, dueBefore, withDescriptions, limit }) => {
@@ -65,6 +84,12 @@ function createGetAssignmentsTool(toolOptions: LearnLinkToolOptions): DynamicStr
           limit,
           tenantId: toolOptions.tenantId,
         });
+        if (result.assignments.length === 0) {
+          const pending = await syncPendingMessage(toolOptions.tenantId);
+          if (pending != null) {
+            return pending;
+          }
+        }
         return toToolResult(result);
       } catch (error) {
         return toToolError(LEARNLINK_GET_ASSIGNMENTS, error);
@@ -158,6 +183,10 @@ function createSearchMaterialsTool(toolOptions: LearnLinkToolOptions): DynamicSt
           tenantId: toolOptions.tenantId,
         });
         if (result.hits.length === 0) {
+          const pending = await syncPendingMessage(toolOptions.tenantId);
+          if (pending != null) {
+            return pending;
+          }
           return `No course materials matched "${query}". Try different keywords, or use learnlink_get_modules to browse the course structure.`;
         }
         return toToolResult(result);

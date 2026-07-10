@@ -3,7 +3,12 @@ import { useSetRecoilState, useRecoilValue } from 'recoil';
 import { useMediaQuery } from '@librechat/client';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, ChevronRight, SquarePen } from 'lucide-react';
-import { Constants, PermissionTypes, Permissions } from 'librechat-data-provider';
+import {
+  Constants,
+  Permissions,
+  PermissionTypes,
+  getConversationCourseId,
+} from 'librechat-data-provider';
 import type { InfiniteQueryObserverResult } from '@tanstack/react-query';
 import type { ConversationListResponse, TConversation } from 'librechat-data-provider';
 import type { List } from 'react-virtualized';
@@ -22,7 +27,11 @@ import {
   iconButtonClassName,
 } from '~/components/LearnLink/utils';
 import { recordCourseChat, useCourseChatMap } from '~/components/LearnLink/chats';
-import { useConversationsInfiniteQuery, useTitleGeneration } from '~/data-provider';
+import {
+  useConversationsInfiniteQuery,
+  useGetConvoIdQuery,
+  useTitleGeneration,
+} from '~/data-provider';
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
@@ -109,6 +118,11 @@ const ConversationsSection = memo(() => {
 
   const pendingCourseId = usePendingCourse();
 
+  const hasOpenConvo = conversationId != null && conversationId !== Constants.NEW_CONVO;
+  const { data: activeConvo } = useGetConvoIdQuery(conversationId ?? '', {
+    enabled: hasOpenConvo,
+  });
+
   const activeCourseId = useMemo(() => {
     if (courseId != null) {
       const parsed = Number.parseInt(courseId, 10);
@@ -118,10 +132,17 @@ const ConversationsSection = memo(() => {
       return null;
     }
     if (conversationId !== Constants.NEW_CONVO) {
-      return chatMap[conversationId] ?? null;
+      const listed = conversations.find(
+        (conversation) => conversation?.conversationId === conversationId,
+      );
+      return (
+        chatMap[conversationId] ??
+        getConversationCourseId(listed) ??
+        getConversationCourseId(activeConvo)
+      );
     }
     return pendingCourseId;
-  }, [courseId, conversationId, chatMap, pendingCourseId]);
+  }, [courseId, conversationId, chatMap, conversations, activeConvo, pendingCourseId]);
 
   const submission = useRecoilValue(store.submissionByIndex(0));
 

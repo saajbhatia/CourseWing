@@ -1,12 +1,14 @@
 const { logger } = require('@librechat/data-schemas');
 const {
+  extractPersona,
   stripLearnLinkBlocks,
   extractAssistanceLevel,
-  defaultAssistanceLevel,
 } = require('librechat-data-provider');
 const {
   buildCourseCard,
   isLearnLinkEnabled,
+  buildPersonaPrompt,
+  buildLearningDefault,
   getCourseContextSafe,
   extractCanvasCourseId,
   buildAssistancePolicy,
@@ -15,7 +17,9 @@ const { getLearnLinkTenantId } = require('~/server/services/LearnLink');
 
 /**
  * Rebuilds the LearnLink sections of the request's promptPrefix each turn:
- * - the assistance policy matching the `LearnLink assistance level: <level>` marker line,
+ * - the assistance policy matching the `LearnLink assistance level: <level>` marker line
+ *   (the tutor-shaped learning default when no marker is present),
+ * - the persona voice matching the `LearnLink persona: <persona>` marker line,
  * - a compact Canvas course card when the conversation carries a `Canvas course ID: <id>`
  *   marker (rebuilt from the local sync service so due dates and announcements stay current).
  * Blocks appended on previous turns are stripped first to keep the prefix idempotent.
@@ -28,12 +32,16 @@ async function learnLinkContext(req, res, next) {
   const promptPrefix = req.body?.promptPrefix;
   const canvasCourseId = extractCanvasCourseId(promptPrefix);
   const markedLevel = extractAssistanceLevel(promptPrefix);
-  if (canvasCourseId == null && markedLevel == null) {
-    return next();
-  }
+  const persona = extractPersona(promptPrefix);
 
-  const assistanceLevel = markedLevel ?? defaultAssistanceLevel;
-  const sections = [stripLearnLinkBlocks(promptPrefix), buildAssistancePolicy(assistanceLevel)];
+  const sections = [
+    stripLearnLinkBlocks(promptPrefix ?? ''),
+    markedLevel == null ? buildLearningDefault() : buildAssistancePolicy(markedLevel),
+  ];
+
+  if (persona != null) {
+    sections.push(buildPersonaPrompt(persona));
+  }
 
   if (canvasCourseId != null) {
     try {

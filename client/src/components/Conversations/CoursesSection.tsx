@@ -9,7 +9,7 @@ import {
   getCourseInitial,
   getCourseColor,
 } from '~/components/LearnLink/utils';
-import { useCurrentCoursesQuery } from '~/data-provider/LearnLink';
+import { useCanvasConnectionQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLink';
 import { useLocalize, useLocalStorage } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -22,6 +22,9 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useLocalStorage('learnlinkCoursesExpanded', true);
   const { data: courses = [], isLoading, isError, isFetching, refetch } = useCurrentCoursesQuery();
+  const { data: connection } = useCanvasConnectionQuery();
+  const isSyncing =
+    connection?.connected === true && (connection.syncing === true || connection.lastSyncAt == null);
 
   const sortedCourses = useMemo(
     () => [...courses].sort((a, b) => a.name.localeCompare(b.name)),
@@ -50,6 +53,15 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
         <div className="flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs text-text-secondary">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0">{localize('com_ui_courses_unavailable')}</span>
+        </div>
+      );
+    }
+
+    if (sortedCourses.length === 0 && isSyncing) {
+      return (
+        <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-text-secondary">
+          <Spinner className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">{localize('com_ui_courses_syncing')}</span>
         </div>
       );
     }

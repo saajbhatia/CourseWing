@@ -102,6 +102,9 @@ export type LearnLinkCourseContext = {
   };
   masteryOutcomeCount?: number;
   lastSyncAt: string | null;
+  recentGradedWork?: LearnLinkAssignment[];
+  gradeSummary?: LearnLinkGradeSummary;
+  moduleNames?: string[];
 };
 
 export type LearnLinkOutcome = {
@@ -160,3 +163,12 @@ export type LearnLinkMaterialTextResponse = {
 };
 
 export type LearnLinkAssignmentFilter = 'upcoming' | 'past' | 'undated' | 'all';
+
+export type LearnLinkTenantStatus = {
+  tenantId: string;
+  userName?: string | null;
+  baseUrl?: string;
+  lastSyncAt: string | null;
+  syncing: boolean;
+  courseCount: number;
+};

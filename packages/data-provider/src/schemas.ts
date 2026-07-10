@@ -946,6 +946,7 @@ export const tConversationSchema = z.object({
   /* DB */
   tags: z.array(z.string()).optional(),
   chatProjectId: z.string().nullable().optional(),
+  canvasCourseId: z.number().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /* Files */

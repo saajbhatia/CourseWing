@@ -1,7 +1,12 @@
-import { assistanceLevels, LEARNLINK_POLICY_MARKER } from 'librechat-data-provider';
+import {
+  assistanceLevels,
+  stripLearnLinkBlocks,
+  LEARNLINK_TUTOR_MARKER,
+  LEARNLINK_POLICY_MARKER,
+} from 'librechat-data-provider';
 import { buildCourseCard, extractCanvasCourseId } from '../card';
 import { clearCourseContextCache } from '../service';
-import { buildAssistancePolicy } from '../prompts';
+import { buildAssistancePolicy, buildLearningDefault } from '../prompts';
 import {
   createLearnLinkTool,
   LEARNLINK_GET_ASSIGNMENTS,
@@ -40,6 +45,37 @@ const courseContext: LearnLinkCourseContext = {
   ],
   materialCounts: { modules: 9, files: 42, pages: 12, readableMaterials: 40 },
   lastSyncAt: '2026-07-04T18:00:00Z',
+  moduleNames: ['Unit P: Precalc Review', 'Unit 1: Limits and Continuity', 'Unit 2: Differentiation'],
+  gradeSummary: {
+    currentScore: 96.4,
+    currentGrade: 'A',
+    weightedGrading: false,
+    groupWeights: null,
+  },
+  recentGradedWork: [
+    {
+      canvasAssignmentId: 88,
+      courseId: '754',
+      name: 'Unit 4 Test',
+      dueAt: '2026-06-20T06:59:00Z',
+      pointsPossible: 33,
+      submissionStatus: 'graded',
+      score: 31,
+      grade: '31',
+      htmlUrl: 'https://school.instructure.com/courses/754/assignments/88',
+    },
+    {
+      canvasAssignmentId: 87,
+      courseId: '754',
+      name: 'Unit 3 Test',
+      dueAt: '2026-06-05T06:59:00Z',
+      pointsPossible: 40,
+      submissionStatus: 'graded',
+      score: 38,
+      grade: '38',
+      htmlUrl: 'https://school.instructure.com/courses/754/assignments/87',
+    },
+  ],
 };
 
 describe('extractCanvasCourseId', () => {
@@ -72,6 +108,46 @@ describe('buildAssistancePolicy', () => {
   });
 });
 
+describe('buildLearningDefault', () => {
+  it('builds a tutor block without policy framing', () => {
+    const tutor = buildLearningDefault();
+    expect(tutor.startsWith(LEARNLINK_TUTOR_MARKER)).toBe(true);
+    expect(tutor).toContain('Answer direct questions fully');
+    expect(tutor).not.toContain(LEARNLINK_POLICY_MARKER);
+    expect(tutor).not.toContain('ASSISTANCE LEVEL:');
+    expect(tutor).not.toContain('Follow it strictly');
+  });
+
+  it('draws the boundary at answers to any item of assigned work', () => {
+    const tutor = buildLearningDefault();
+    expect(tutor).toContain('do not give answers to ANY of its items');
+    expect(tutor).toContain('not even one item worked "as an example"');
+    expect(tutor).toContain('no going item-by-item with hints');
+    expect(tutor).toContain('analogous example you invent with different content');
+    expect(tutor).toContain('never lecture about academic integrity unprompted');
+  });
+
+  it('persists the boundary across crops, re-uploads, and rewordings', () => {
+    const tutor = buildLearningDefault();
+    expect(tutor).toContain('covers the task, not the message');
+    expect(tutor).toContain('re-upload');
+  });
+
+  it('tells the tutor to ground school-life questions in real data via tools', () => {
+    const tutor = buildLearningDefault();
+    expect(tutor).toContain('learnlink_* tools');
+    expect(tutor).toContain('ALL of their classes');
+    expect(tutor).toContain('Never fill a plan with placeholder blanks');
+  });
+});
+
+describe('stripLearnLinkBlocks', () => {
+  it('strips a server-appended learning default block', () => {
+    const prefix = `Some base prefix\n\n${buildLearningDefault()}`;
+    expect(stripLearnLinkBlocks(prefix)).toBe('Some base prefix');
+  });
+});
+
 describe('buildCourseCard', () => {
   it('renders a compact card with course, assignments, and announcements', () => {
     const card = buildCourseCard(courseContext);
@@ -83,7 +159,42 @@ describe('buildCourseCard', () => {
     expect(card).toContain('unsubmitted');
     expect(card).toContain('Exam moved to Friday');
     expect(card).toContain('learnlink_search_materials');
-    expect(card.length).toBeLessThan(2500);
+    expect(card.length).toBeLessThan(3000);
+  });
+
+  it('renders current grade and recent graded work with percentages', () => {
+    const card = buildCourseCard(courseContext);
+
+    expect(card).toContain('Current grade: 96.4% (A)');
+    expect(card).toContain('Recent graded work');
+    expect(card).toContain('Unit 4 Test — 31/33 (93.9%)');
+    expect(card).toContain('Unit 3 Test — 38/40 (95%)');
+  });
+
+  it('renders the course module structure in order', () => {
+    const card = buildCourseCard(courseContext);
+
+    expect(card).toContain(
+      'Course structure (modules, in order): Unit P: Precalc Review | Unit 1: Limits and Continuity | Unit 2: Differentiation',
+    );
+  });
+
+  it('instructs a sources footer only for course materials, never general knowledge', () => {
+    const card = buildCourseCard(courseContext);
+
+    expect(card).toContain('Only when an answer draws on course materials');
+    expect(card).toContain('never "Sources: general knowledge"');
+  });
+
+  it('omits grade lines when the service returned no graded work', () => {
+    const card = buildCourseCard({
+      ...courseContext,
+      gradeSummary: undefined,
+      recentGradedWork: undefined,
+    });
+
+    expect(card).not.toContain('Current grade:');
+    expect(card).not.toContain('Recent graded work');
   });
 
   it('handles a course with no upcoming work', () => {
@@ -152,5 +263,71 @@ describe('learnlink tools', () => {
     });
 
     expect(result).toContain('No course materials matched');
+  });
+
+  const mockFetchByUrl = (routes: Array<{ match: string; payload: unknown }>) => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      const route = routes.find((r) => String(url).includes(r.match));
+      return {
+        ok: route != null,
+        status: route != null ? 200 : 404,
+        json: async () => route?.payload,
+        text: async () => JSON.stringify(route?.payload),
+      };
+    }) as unknown as typeof fetch;
+  };
+
+  it('reports sync-in-progress instead of an empty assignment list while the tenant syncs', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: { tenantId: 'tenant-1', syncing: true, lastSyncAt: null, courseCount: 0 },
+      },
+    ]);
+
+    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(result).toContain('still syncing');
+    expect(result).toContain('Do NOT guess');
+  });
+
+  it('returns the empty assignment list unchanged once the tenant has synced', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: {
+          tenantId: 'tenant-1',
+          syncing: false,
+          lastSyncAt: '2026-07-09T18:00:00Z',
+          courseCount: 7,
+        },
+      },
+    ]);
+
+    const result = await createLearnLinkTool(LEARNLINK_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(JSON.parse(result as string)).toEqual({ assignments: [] });
+  });
+
+  it('reports sync-in-progress for empty search results while the tenant syncs', async () => {
+    mockFetchByUrl([
+      { match: '/api/learnlink/search', payload: { query: 'entropy', hits: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: { tenantId: 'tenant-1', syncing: true, lastSyncAt: null, courseCount: 0 },
+      },
+    ]);
+
+    const result = await createLearnLinkTool(LEARNLINK_SEARCH_MATERIALS, {
+      tenantId: 'tenant-1',
+    }).invoke({ query: 'entropy' });
+
+    expect(result).toContain('still syncing');
   });
 });

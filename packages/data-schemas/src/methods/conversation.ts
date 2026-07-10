@@ -1,4 +1,4 @@
-import { RetentionMode } from 'librechat-data-provider';
+import { RetentionMode, extractCanvasCourseId } from 'librechat-data-provider';
 import type { FilterQuery, Model, SortOrder } from 'mongoose';
 import type { DeleteResult } from 'mongoose';
 import type { AppConfig, IChatProjectDocument, IConversation } from '~/types';
@@ -216,6 +216,14 @@ export function createConversationMethods(
       const messages = await getMessages({ conversationId, user: userId }, '_id');
       const update: Record<string, unknown> = { ...convo, messages, user: userId };
       const unsetFields: Record<string, number> = { ...(metadata?.unsetFields ?? {}) };
+
+      if (typeof update.promptPrefix === 'string') {
+        const canvasCourseId = extractCanvasCourseId(update.promptPrefix);
+        if (canvasCourseId != null) {
+          update.canvasCourseId = canvasCourseId;
+          delete unsetFields.canvasCourseId;
+        }
+      }
 
       if (Object.prototype.hasOwnProperty.call(update, 'chatProjectId') && update.chatProjectId) {
         const chatProjectId = typeof update.chatProjectId === 'string' ? update.chatProjectId : '';
@@ -641,7 +649,7 @@ export function createConversationMethods(
 
       const convos = await Conversation.find(query)
         .select(
-          'conversationId endpoint title createdAt updatedAt user model agent_id assistant_id spec iconURL chatProjectId pinned',
+          'conversationId endpoint title createdAt updatedAt user model agent_id assistant_id spec iconURL chatProjectId canvasCourseId pinned',
         )
         .sort(sortObj)
         .limit(limit + 1)

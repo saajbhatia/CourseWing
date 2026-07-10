@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Spinner } from '@librechat/client';
-import { format, isToday, isTomorrow } from 'date-fns';
+import { addDays, format, isSameDay } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ArrowUp, Files } from 'lucide-react';
+import { ArrowRight, ArrowUp, Files, Sparkles } from 'lucide-react';
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import type { LearnLinkAssignment } from '~/data-provider/LearnLink';
 import type { LearnLinkCourseIdentity } from './utils';
@@ -11,9 +11,11 @@ import {
   getDisplayCourseName,
   getAssignmentPrefix,
   getCourseInitial,
+  getReviewPrefix,
   getCoursePrefix,
   getCourseColor,
   openCourseChat,
+  learnlinkNow,
 } from './utils';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { cn } from '~/utils';
@@ -81,13 +83,14 @@ function getDueLabel(
   if (Number.isNaN(due.getTime())) {
     return null;
   }
-  if (isToday(due)) {
+  const now = learnlinkNow();
+  if (isSameDay(due, now)) {
     return localize('com_ui_due_today');
   }
-  if (isTomorrow(due)) {
+  if (isSameDay(due, addDays(now, 1))) {
     return localize('com_ui_due_tomorrow');
   }
-  const pattern = due.getFullYear() === new Date().getFullYear() ? 'MMM d' : 'MMM d, yyyy';
+  const pattern = due.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy';
   return localize('com_ui_due_date', { date: format(due, pattern) });
 }
 
@@ -132,7 +135,7 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
   );
 
   const buckets = useMemo(
-    () => bucketAssignments(materials?.assignments ?? [], Date.now()),
+    () => bucketAssignments(materials?.assignments ?? [], learnlinkNow().getTime()),
     [materials],
   );
 
@@ -150,6 +153,13 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
     openCourseChat(navigate, newConversation, course, {
       promptPrefix: getCoursePrefix(course),
       prompt: text,
+    });
+  };
+
+  const startReviewChat = () => {
+    openCourseChat(navigate, newConversation, course, {
+      promptPrefix: getReviewPrefix(course),
+      prompt: localize('com_ui_course_prompt_review'),
     });
   };
 
@@ -237,6 +247,22 @@ function CourseView({ course }: { course: LearnLinkCourseIdentity & { name: stri
                 <SectionLabel label={localize('com_ui_up_next')} />
                 {buckets.upNext.length > 0 ? renderRows(buckets.upNext) : renderEmpty()}
               </div>
+              <button
+                type="button"
+                onClick={startReviewChat}
+                className="flex items-center gap-3 rounded-xl border border-border-medium px-3.5 py-2.5 text-left transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+              >
+                <Sparkles className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-text-primary">
+                    {localize('com_ui_course_review_session')}
+                  </span>
+                  <span className="block truncate text-xs text-text-secondary">
+                    {localize('com_ui_course_review_session_desc')}
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+              </button>
               <div className="flex flex-col gap-0.5">
                 {smartPromptKeys.map((key) => (
                   <button
