@@ -80,16 +80,6 @@ export function getReviewPrefix(course: LearnLightCourseIdentity): string {
   ].join('\n');
 }
 
-/**
- * Course chats opened via URL params can't use a `spec` param — useQueryParams replaces the
- * whole preset with the spec's, dropping promptPrefix. Instead carry the "GPT-5.5 (Instant)"
- * spec's latency-critical settings (librechat.yaml) directly; they merge with promptPrefix.
- */
-const INSTANT_PRESET_PARAMS = {
-  reasoning_effort: 'none',
-  useResponsesApi: 'true',
-} as const;
-
 export type NewConversationCall = (options?: { disableFocus?: boolean }) => void;
 
 export type CourseChatOptions = {
@@ -111,9 +101,14 @@ export function openCourseChat(
   }
   setPendingCourse(course.canvasCourseId);
   newConversation({ disableFocus: true });
+  /**
+   * Course chats opened via URL params can't use a `spec` param — useQueryParams replaces the
+   * whole preset with the spec's, dropping promptPrefix. Carry only promptPrefix so the
+   * default spec's endpoint settings stay intact; endpoint-specific params here would never
+   * register as "applied" and useQueryParams would drop the auto-submit.
+   */
   const params = new URLSearchParams({
     promptPrefix: options.promptPrefix,
-    ...INSTANT_PRESET_PARAMS,
   });
   if (options.prompt) {
     params.set('prompt', options.prompt);

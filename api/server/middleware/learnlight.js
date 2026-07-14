@@ -57,6 +57,10 @@ async function learnLightContext(req, res, next) {
 
   req.body.promptPrefix = sections.filter(Boolean).join('\n\n');
 
+  if (req.body.endpoint === 'bedrock') {
+    req.body.thinking = false;
+  }
+
   next();
 }
 

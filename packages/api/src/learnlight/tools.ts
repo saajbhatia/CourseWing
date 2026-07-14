@@ -45,7 +45,7 @@ const courseIdParam = z
   .int()
   .optional()
   .describe(
-    "Canvas course ID. Use the ID from the conversation's course context when present; omit to cover all of the student's current courses.",
+    "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result (get_assignments results include each course's ID). NEVER guess or invent an ID; when you don't have one, omit the parameter to cover all of the student's current courses.",
   );
 
 function toToolResult(payload: unknown): string {
@@ -55,6 +55,9 @@ function toToolResult(payload: unknown): string {
 function toToolError(toolKey: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   logger.warn(`[LearnLight] ${toolKey} failed: ${message}`);
+  if (message.includes('No synced course with canvas id')) {
+    return `That canvas course ID does not exist (${message}). Do not tell the student the course is unsynced — the ID was wrong. Retry with a correct ID: use the ID from the conversation's course context or a previous tool result, or call learnlight_get_assignments (which lists each course's real ID) to find it.`;
+  }
   return `Canvas data is temporarily unavailable (${message}). Let the student know and answer from general knowledge if possible.`;
 }
 
@@ -173,7 +176,9 @@ function createGetModulesTool(toolOptions: LearnLightToolOptions): DynamicStruct
         canvasCourseId: z
           .number()
           .int()
-          .describe("Canvas course ID (from the conversation's course context)."),
+          .describe(
+            "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result. If you don't have one, call learnlight_get_assignments first (its results include each course's ID). NEVER guess or invent an ID.",
+          ),
       }),
     },
   );

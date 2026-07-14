@@ -305,13 +305,14 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
           </div>
           <form
             onSubmit={handleComposerSubmit}
-            className="flex items-center gap-2 rounded-3xl border border-border-medium bg-surface-primary px-4 py-2 shadow-sm"
+            className="flex items-center gap-2 rounded-3xl border border-border-medium bg-surface-primary px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-ring-primary"
           >
             <input
+              autoFocus
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder={localize('com_ui_ask_about_course', { name: displayName })}
-              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus-visible:outline-none"
             />
             <button
               type="submit"
