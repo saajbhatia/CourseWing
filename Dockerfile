@@ -53,6 +53,10 @@ RUN \
 
 COPY --chown=node:node . .
 
+# Baked into the client bundle at build time (see client/src/data-provider/LearnLight/queries.ts)
+ARG VITE_LEARNLIGHT_CANVAS_SERVICE_URL=
+ENV VITE_LEARNLIGHT_CANVAS_SERVICE_URL=${VITE_LEARNLIGHT_CANVAS_SERVICE_URL}
+
 RUN \
     # React client build with configurable memory
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \

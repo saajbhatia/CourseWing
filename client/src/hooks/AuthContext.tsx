@@ -37,6 +37,17 @@ if (import.meta.hot) {
   import.meta.hot.data.__AuthContext = AuthContext;
 }
 
+const PRIOR_SESSION_KEY = 'hasPriorSession';
+
+/** Returning users get the classic redirect-to-login; only first-time visitors browse as guests. */
+const hasPriorSession = () => localStorage.getItem(PRIOR_SESSION_KEY) != null;
+
+/** Routes guests may view without a session; sending a message still requires login. */
+const isGuestViewableRoute = () => {
+  const path = window.location.pathname;
+  return (path === '/' || path.includes('/c/')) && !hasPriorSession();
+};
+
 const AuthContextProvider = ({
   authConfig,
   children,
@@ -50,6 +61,7 @@ const AuthContextProvider = ({
   const [token, setToken] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isGuest, setIsGuest] = useState<boolean>(false);
   const setQueriesEnabled = useSetRecoilState<boolean>(store.queriesEnabled);
 
   const userRoleName = user?.role ?? '';
@@ -76,7 +88,9 @@ const AuthContextProvider = ({
         setTokenHeader(token);
         setIsAuthenticated(isAuthenticated);
         if (isAuthenticated) {
+          setIsGuest(false);
           setQueriesEnabled(true);
+          localStorage.setItem(PRIOR_SESSION_KEY, '1');
         }
 
         const searchParams = new URLSearchParams(window.location.search);
@@ -205,6 +219,10 @@ const AuthContextProvider = ({
         if (authConfig?.test === true) {
           return;
         }
+        if (isGuestViewableRoute()) {
+          setIsGuest(true);
+          return;
+        }
         navigate(buildLoginRedirectUrl());
       },
       onError: (error) => {
@@ -213,6 +231,10 @@ const AuthContextProvider = ({
         }
         console.log('refreshToken mutation error:', error);
         if (authConfig?.test === true) {
+          return;
+        }
+        if (isGuestViewableRoute()) {
+          setIsGuest(true);
           return;
         }
         navigate(buildLoginRedirectUrl());
@@ -281,12 +303,14 @@ const AuthContextProvider = ({
         ...(isCustomRole && customRole ? { [userRoleName]: customRole } : {}),
       },
       isAuthenticated,
+      isGuest,
     }),
 
     [
       user,
       error,
       isAuthenticated,
+      isGuest,
       token,
       userRole,
       adminRole,

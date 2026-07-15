@@ -15,6 +15,16 @@ const { getAppConfig } = require('~/server/services/Config');
  */
 const checkDomainAllowed = async (req, res, next) => {
   try {
+    /**
+     * The domain allowlist governs registration only (enforced in the social
+     * login strategy); users who already authenticated — including
+     * admin-created accounts outside the allowlist — always retain access.
+     */
+    if (req?.user?.id || req?.user?._id) {
+      next();
+      return;
+    }
+
     const email = req?.user?.email;
     const appConfig = await getAppConfig({
       role: req?.user?.role,

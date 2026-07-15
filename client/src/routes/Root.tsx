@@ -43,7 +43,7 @@ export default function Root() {
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
 
-  const { isAuthenticated, logout } = useAuthContext();
+  const { isAuthenticated, isGuest, logout } = useAuthContext();
 
   useHealthCheck(isAuthenticated);
 
@@ -73,7 +73,7 @@ export default function Root() {
     logout('/login?redirect=false');
   };
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isGuest) {
     return null;
   }
 

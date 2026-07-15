@@ -321,7 +321,7 @@ describe('socialLogin', () => {
       expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
     });
 
-    it('should block login when tenant config restricts the domain', async () => {
+    it('should allow existing-user login even when tenant config restricts the domain', async () => {
       const { isEmailDomainAllowed } = require('@librechat/api');
       const provider = 'google';
       const googleId = 'google-tenant-blocked';
@@ -340,13 +340,36 @@ describe('socialLogin', () => {
       resolveAppConfigForUser.mockResolvedValue({
         registration: { allowedDomains: ['other.com'] },
       });
-      isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
+      isEmailDomainAllowed.mockReturnValue(false);
 
       const mockProfile = {
         id: googleId,
         emails: [{ value: email, verified: true }],
         photos: [{ value: 'https://example.com/avatar.png' }],
         name: { givenName: 'Blocked', familyName: 'User' },
+      };
+
+      const loginFn = socialLogin(provider, mockGetProfileDetails);
+      const callback = jest.fn();
+
+      await loginFn(null, null, null, mockProfile, callback);
+
+      expect(callback).toHaveBeenCalledWith(null, existingUser);
+    });
+
+    it('should block new-user registration when the domain is not allowed', async () => {
+      const { isEmailDomainAllowed } = require('@librechat/api');
+      const provider = 'google';
+      const email = 'newuser@notallowed.com';
+
+      findUser.mockResolvedValue(null);
+      isEmailDomainAllowed.mockReturnValue(false);
+
+      const mockProfile = {
+        id: 'google-new-blocked',
+        emails: [{ value: email, verified: true }],
+        photos: [{ value: 'https://example.com/avatar.png' }],
+        name: { givenName: 'New', familyName: 'Blocked' },
       };
 
       const loginFn = socialLogin(provider, mockGetProfileDetails);

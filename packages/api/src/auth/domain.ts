@@ -30,7 +30,17 @@ export function isEmailDomainAllowed(email: string, allowedDomains?: string[] | 
     return false;
   }
 
-  return allowedDomains.some((allowedDomain) => allowedDomain?.toLowerCase() === domain);
+  return allowedDomains.some((allowedDomain) => {
+    const allowed = allowedDomain?.toLowerCase();
+    if (!allowed) {
+      return false;
+    }
+    if (allowed.startsWith('*.')) {
+      const baseDomain = allowed.slice(2);
+      return domain === baseDomain || domain.endsWith(`.${baseDomain}`);
+    }
+    return allowed === domain;
+  });
 }
 
 /**

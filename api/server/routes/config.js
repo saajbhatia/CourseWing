@@ -222,18 +222,13 @@ router.get('/', async function (req, res) {
       };
 
       const interfaceConfig = baseConfig?.interfaceConfig;
-      const buildInfoDisabled = interfaceConfig?.buildInfo === false;
-      if (interfaceConfig?.privacyPolicy || interfaceConfig?.termsOfService || buildInfoDisabled) {
-        payload.interface = {};
-        if (interfaceConfig.privacyPolicy) {
-          payload.interface.privacyPolicy = interfaceConfig.privacyPolicy;
-        }
-        if (interfaceConfig.termsOfService) {
-          payload.interface.termsOfService = interfaceConfig.termsOfService;
-        }
-        if (buildInfoDisabled) {
-          payload.interface.buildInfo = false;
-        }
+      /** Guests may view the chat UI, so expose interface config and model specs pre-login. */
+      if (interfaceConfig) {
+        payload.interface = interfaceConfig;
+      }
+      const guestModelSpecs = sanitizeModelSpecs(excludeHiddenModelSpecs(baseConfig?.modelSpecs));
+      if (guestModelSpecs) {
+        payload.modelSpecs = guestModelSpecs;
       }
 
       const unauthBuildInfo = buildBuildInfoPayload(interfaceConfig);

@@ -15,16 +15,6 @@ const socialLogin =
       });
 
       const baseConfig = await getAppConfig({ baseOnly: true });
-      if (!isEmailDomainAllowed(email, baseConfig?.registration?.allowedDomains)) {
-        logger.error(
-          `[${provider}Login] Authentication blocked - email domain not allowed [Email: ${email}]`,
-        );
-        const error = new Error(ErrorTypes.AUTH_FAILED);
-        error.code = ErrorTypes.AUTH_FAILED;
-        error.message = 'Email domain not allowed';
-        return cb(error);
-      }
-
       const providerKey = `${provider}Id`;
       let existingUser = null;
 
@@ -45,7 +35,8 @@ const socialLogin =
         ? await resolveAppConfigForUser(getAppConfig, existingUser)
         : baseConfig;
 
-      if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
+      /** Domain allowlist governs registration only; admin-created accounts always retain access */
+      if (!existingUser && !isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
         logger.error(
           `[${provider}Login] Authentication blocked - email domain not allowed [Email: ${email}]`,
         );

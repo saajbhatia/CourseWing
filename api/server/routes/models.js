@@ -1,8 +1,8 @@
 const express = require('express');
 const { modelController } = require('~/server/controllers/ModelController');
-const { requireJwtAuth } = require('~/server/middleware/');
+const optionalJwtAuth = require('~/server/middleware/optionalJwtAuth');
 
 const router = express.Router();
-router.get('/', requireJwtAuth, modelController);
+router.get('/', optionalJwtAuth, modelController);
 
 module.exports = router;

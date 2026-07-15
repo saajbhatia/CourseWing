@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
-import { replaceSpecialVars } from 'librechat-data-provider';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { replaceSpecialVars, buildLoginRedirectUrl } from 'librechat-data-provider';
 import { useChatContext, useChatFormContext, useAddedChatContext } from '~/Providers';
 import { useLatestMessage } from '~/hooks/Messages/useLatestMessage';
 import { useAuthContext } from '~/hooks/AuthContext';
@@ -8,7 +9,9 @@ import { mainTextareaId } from '~/common';
 import store from '~/store';
 
 export default function useSubmitMessage() {
-  const { user } = useAuthContext();
+  const { user, isAuthenticated } = useAuthContext();
+  const navigate = useNavigate();
+  const location = useLocation();
   const methods = useChatFormContext();
   const { conversation: addedConvo } = useAddedChatContext();
   const { ask, index, getMessages, setMessages } = useChatContext();
@@ -21,6 +24,10 @@ export default function useSubmitMessage() {
     (data?: { text: string }) => {
       if (!data) {
         return console.warn('No data provided to submitMessage');
+      }
+      if (!isAuthenticated) {
+        navigate(buildLoginRedirectUrl(location.pathname, location.search, location.hash));
+        return false;
       }
       const rootMessages = getMessages();
       const isLatestInRootMessages = rootMessages?.some(
@@ -43,7 +50,7 @@ export default function useSubmitMessage() {
       }
       methods.reset();
     },
-    [ask, methods, addedConvo, setMessages, getMessages, latestMessage],
+    [ask, methods, addedConvo, setMessages, getMessages, latestMessage, isAuthenticated, navigate, location],
   );
 
   const submitPrompt = useCallback(
