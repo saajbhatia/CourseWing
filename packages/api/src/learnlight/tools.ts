@@ -108,7 +108,7 @@ function createGetAssignmentsTool(toolOptions: LearnLightToolOptions): DynamicSt
     {
       name: LEARNLIGHT_GET_ASSIGNMENTS,
       description:
-        "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, and teacher feedback on the submission. Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, or how a graded assignment was scored — narrow with query to get the full rubric breakdown for one assignment.",
+        "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, teacher feedback on the submission, and the student's own submitted work (text-entry excerpt with a materialId for the full text, uploaded files readable via learnlight_read_material, or a submitted URL). Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, how a graded assignment was scored, or what the student turned in — narrow with query to get the full breakdown for one assignment.",
       schema: z.object({
         canvasCourseId: courseIdParam,
         filter: z
@@ -209,7 +209,7 @@ function createSearchMaterialsTool(toolOptions: LearnLightToolOptions): DynamicS
     {
       name: LEARNLIGHT_SEARCH_MATERIALS,
       description:
-        "Full-text search across synced Canvas course content: files (study guides, readings, handouts), Canvas pages (unit overviews, lessons), and syllabi. Returns matching excerpts with a materialId for learnlight_read_material. Use before answering questions that should be grounded in the course's own materials.",
+        'Full-text search across synced Canvas course content: files (study guides, readings, handouts), Canvas pages (unit overviews, lessons), syllabi, and the student\'s own submitted work (kind "submission"). Returns matching excerpts with a materialId for learnlight_read_material. Use before answering questions that should be grounded in the course\'s own materials.',
       schema: z.object({
         query: z.string().describe('Keywords to search for (topic, concept, chapter, etc.).'),
         canvasCourseId: courseIdParam,
@@ -235,7 +235,7 @@ function createReadMaterialTool(toolOptions: LearnLightToolOptions): DynamicStru
     {
       name: LEARNLIGHT_READ_MATERIAL,
       description:
-        'Read the extracted text of a synced Canvas material (file, page, or syllabus), one page (~4000 characters) at a time. Use after learnlight_search_materials when an excerpt is not enough, or when the student asks about a whole document. For a course file, the materialId is "<courseId>:file:<canvasFileId>". Check totalPages to read further pages. Results may include a links array of documents referenced by the material — file links are readable via their canvasFileId, and external links carry a url you can give the student directly.',
+        'Read the extracted text of a synced Canvas material (file, page, syllabus, or the student\'s own submission), one page (~4000 characters) at a time. Use after learnlight_search_materials when an excerpt is not enough, or when the student asks about a whole document — including their own submitted essay or file (submission materialIds appear in learnlight_get_assignments detail results). For a course file, the materialId is "<courseId>:file:<canvasFileId>". Check totalPages to read further pages. Results may include a links array of documents referenced by the material — file links are readable via their canvasFileId, and external links carry a url you can give the student directly.',
       schema: z.object({
         materialId: z
           .string()

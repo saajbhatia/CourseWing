@@ -1,19 +1,29 @@
 export const assistanceLevels = ['discuss', 'hints', 'worked', 'full'] as const;
 
 const COURSE_ID_PATTERN = /Canvas course ID:\s*(\d+)/i;
+const ASSIGNMENT_ID_PATTERN = /Canvas assignment ID:\s*(\d+)/i;
 
-export function extractCanvasCourseId(promptPrefix?: string | null): number | null {
+function extractMarkedId(pattern: RegExp, promptPrefix?: string | null): number | null {
   if (!promptPrefix) {
     return null;
   }
 
-  const match = COURSE_ID_PATTERN.exec(promptPrefix);
+  const match = pattern.exec(promptPrefix);
   if (!match) {
     return null;
   }
 
-  const canvasCourseId = Number(match[1]);
-  return Number.isFinite(canvasCourseId) ? canvasCourseId : null;
+  const id = Number(match[1]);
+  return Number.isFinite(id) ? id : null;
+}
+
+export function extractCanvasCourseId(promptPrefix?: string | null): number | null {
+  return extractMarkedId(COURSE_ID_PATTERN, promptPrefix);
+}
+
+/** Set by assignment-launched chats so the server can inject that assignment's context card. */
+export function extractCanvasAssignmentId(promptPrefix?: string | null): number | null {
+  return extractMarkedId(ASSIGNMENT_ID_PATTERN, promptPrefix);
 }
 
 /**
@@ -44,6 +54,7 @@ export const LEARNLIGHT_POLICY_MARKER = '[LearnLight assistance policy';
 export const LEARNLIGHT_TUTOR_MARKER = '[LearnLight tutor';
 export const LEARNLIGHT_PERSONA_MARKER = '[LearnLight persona';
 export const LEARNLIGHT_CARD_MARKER = '[LearnLight course context';
+export const LEARNLIGHT_ASSIGNMENT_MARKER = '[LearnLight assignment context';
 
 /** Pre-rename ("LearnLink") markers still stored in existing conversations' prompt prefixes. */
 const LEGACY_LEVEL_LINE = 'LearnLink assistance level:';
@@ -85,6 +96,7 @@ export function stripLearnLightBlocks(promptPrefix: string): string {
     LEARNLIGHT_TUTOR_MARKER,
     LEARNLIGHT_PERSONA_MARKER,
     LEARNLIGHT_CARD_MARKER,
+    LEARNLIGHT_ASSIGNMENT_MARKER,
     ...LEGACY_BLOCK_MARKERS,
   ]
     .map((marker) => promptPrefix.indexOf(marker))
@@ -108,7 +120,9 @@ export function setAssistanceLevelInPrefix(
 ): string {
   const base = stripLearnLightBlocks(promptPrefix ?? '')
     .split('\n')
-    .filter((line) => !line.startsWith(LEARNLIGHT_LEVEL_LINE) && !line.startsWith(LEGACY_LEVEL_LINE))
+    .filter(
+      (line) => !line.startsWith(LEARNLIGHT_LEVEL_LINE) && !line.startsWith(LEGACY_LEVEL_LINE),
+    )
     .join('\n')
     .trimEnd();
 

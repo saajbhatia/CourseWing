@@ -1,5 +1,6 @@
 import { logger } from '@librechat/data-schemas';
 import type {
+  LearnLightAssignmentDetailResponse,
   LearnLightAssignmentFilter,
   LearnLightAssignmentsResponse,
   LearnLightCourseContext,
@@ -65,7 +66,10 @@ export async function getCourseContext(
   }
 
   const [value, gradedWork, moduleNames] = await Promise.all([
-    fetchJson<LearnLightCourseContext>(`/api/learnlight/courses/${canvasCourseId}/context`, options),
+    fetchJson<LearnLightCourseContext>(
+      `/api/learnlight/courses/${canvasCourseId}/context`,
+      options,
+    ),
     getRecentGradedWorkSafe(canvasCourseId, options),
     getModuleNamesSafe(canvasCourseId, options),
   ]);
@@ -168,6 +172,34 @@ export async function getAssignments(params: {
   return fetchJson<LearnLightAssignmentsResponse>(query ? `${basePath}?${query}` : basePath, {
     tenantId: params.tenantId,
   });
+}
+
+export async function getAssignmentDetail(
+  canvasCourseId: number,
+  canvasAssignmentId: number,
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightAssignmentDetailResponse> {
+  return fetchJson<LearnLightAssignmentDetailResponse>(
+    `/api/learnlight/courses/${canvasCourseId}/assignments/${canvasAssignmentId}`,
+    options,
+  );
+}
+
+export async function getAssignmentDetailSafe(
+  canvasCourseId: number,
+  canvasAssignmentId: number,
+  options?: LearnLightRequestOptions,
+): Promise<LearnLightAssignmentDetailResponse | null> {
+  try {
+    return await getAssignmentDetail(canvasCourseId, canvasAssignmentId, options);
+  } catch (error) {
+    logger.warn(
+      `[LearnLight] Failed to fetch assignment detail ${canvasCourseId}/${canvasAssignmentId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }
 
 export async function getModules(

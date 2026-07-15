@@ -63,6 +63,7 @@ export function getAssignmentPrefix(
   return [
     getCoursePrefix(course),
     `Assignment: ${assignment.name}`,
+    `Canvas assignment ID: ${assignment.canvasAssignmentId}`,
     assignment.dueAt ? `Due: ${assignment.dueAt}` : '',
     'The student wants help with this assignment.',
   ]

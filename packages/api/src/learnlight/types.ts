@@ -26,6 +26,24 @@ export type LearnLightTeacherComment = {
   at: string | null;
 };
 
+export type LearnLightSubmissionAttachment = {
+  filename: string;
+  contentType: string | null;
+  size: number | null;
+  materialId: string;
+};
+
+/** The student's own submitted work (text-entry body, submitted URL, uploaded files). */
+export type LearnLightSubmission = {
+  type: string | null;
+  attempt: number | null;
+  submittedAt: string | null;
+  submittedUrl?: string;
+  body?: string;
+  bodyMaterialId?: string;
+  attachments?: LearnLightSubmissionAttachment[];
+};
+
 export type LearnLightAssignment = {
   canvasAssignmentId: number;
   courseId: string;
@@ -41,6 +59,7 @@ export type LearnLightAssignment = {
   links?: LearnLightAssignmentLink[];
   rubric?: LearnLightRubricLine[];
   teacherComments?: LearnLightTeacherComment[];
+  submission?: LearnLightSubmission;
   courseName?: string | null;
 };
 
@@ -132,7 +151,7 @@ export type LearnLightMasteryResponse =
   | LearnLightCourseMastery
   | { courses: LearnLightCourseMastery[]; note?: string };
 
-export type LearnLightMaterialKind = 'file' | 'page' | 'syllabus';
+export type LearnLightMaterialKind = 'file' | 'page' | 'syllabus' | 'submission';
 
 export type LearnLightSearchHit = {
   materialId: string;
@@ -163,6 +182,11 @@ export type LearnLightMaterialTextResponse = {
 };
 
 export type LearnLightAssignmentFilter = 'upcoming' | 'past' | 'undated' | 'all';
+
+export type LearnLightAssignmentDetailResponse = {
+  course: LearnLightCourseRef;
+  assignment: LearnLightAssignment;
+};
 
 export type LearnLightTenantStatus = {
   tenantId: string;

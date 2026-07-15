@@ -8,10 +8,13 @@ const {
   buildCourseCard,
   isLearnLightEnabled,
   buildPersonaPrompt,
+  buildAssignmentCard,
   buildLearningDefault,
   getCourseContextSafe,
   extractCanvasCourseId,
   buildAssistancePolicy,
+  getAssignmentDetailSafe,
+  extractCanvasAssignmentId,
 } = require('@librechat/api');
 const { getLearnLightTenantId } = require('~/server/services/LearnLight');
 
@@ -21,7 +24,9 @@ const { getLearnLightTenantId } = require('~/server/services/LearnLight');
  *   (the tutor-shaped learning default when no marker is present),
  * - the persona voice matching the `LearnLight persona: <persona>` marker line,
  * - a compact Canvas course card when the conversation carries a `Canvas course ID: <id>`
- *   marker (rebuilt from the local sync service so due dates and announcements stay current).
+ *   marker (rebuilt from the local sync service so due dates and announcements stay current),
+ * - an assignment card (instructions, the student's own submission, teacher feedback) when
+ *   the conversation also carries a `Canvas assignment ID: <id>` marker.
  * Blocks appended on previous turns are stripped first to keep the prefix idempotent.
  */
 async function learnLightContext(req, res, next) {
@@ -46,9 +51,18 @@ async function learnLightContext(req, res, next) {
   if (canvasCourseId != null) {
     try {
       const tenantId = await getLearnLightTenantId(req.user?.id);
-      const context = await getCourseContextSafe(canvasCourseId, { tenantId });
+      const canvasAssignmentId = extractCanvasAssignmentId(promptPrefix);
+      const [context, assignmentDetail] = await Promise.all([
+        getCourseContextSafe(canvasCourseId, { tenantId }),
+        canvasAssignmentId != null
+          ? getAssignmentDetailSafe(canvasCourseId, canvasAssignmentId, { tenantId })
+          : Promise.resolve(null),
+      ]);
       if (context) {
         sections.push(buildCourseCard(context));
+      }
+      if (assignmentDetail) {
+        sections.push(buildAssignmentCard(assignmentDetail.assignment));
       }
     } catch (error) {
       logger.warn('[learnLightContext] Failed to build course card', error);
