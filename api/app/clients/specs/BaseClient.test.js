@@ -981,7 +981,11 @@ describe('BaseClient', () => {
         temperature: 0.7,
       };
       const user = { id: 'user-id' };
-      const req = { user, resolvedConversation: existingConvo };
+      const req = {
+        user,
+        resolvedConversation: existingConvo,
+        learnLightCanvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+      };
 
       getConvo.mockClear();
       saveMessage.mockResolvedValue({ messageId: 'msg-1' });
@@ -1007,6 +1011,7 @@ describe('BaseClient', () => {
         expect.any(Object),
         expect.objectContaining({ conversationId: existingConvo.conversationId }),
         expect.objectContaining({
+          canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
           unsetFields: expect.objectContaining({ temperature: 1 }),
         }),
       );

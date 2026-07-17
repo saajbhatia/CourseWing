@@ -19,6 +19,42 @@ const baseConversation: TConversation = {
 };
 
 describe('buildDefaultConvo - defaultParamsEndpoint', () => {
+  it('preserves an explicit course prefix when an agent preset normalizes its prefix to null', () => {
+    const result = buildDefaultConvo({
+      models: [],
+      conversation: {
+        ...baseConversation,
+        promptPrefix: 'Current Canvas course: Chemistry\nCanvas course ID: 42',
+      },
+      endpoint: EModelEndpoint.agents,
+      lastConversationSetup: {
+        ...baseConversation,
+        endpoint: EModelEndpoint.agents,
+        agent_id: 'agent_saved',
+        promptPrefix: null,
+      },
+    });
+
+    expect(result.promptPrefix).toBe('Current Canvas course: Chemistry\nCanvas course ID: 42');
+    expect(result.agent_id).toBe('agent_saved');
+  });
+
+  it('still lets a preset replace an ordinary non-course prefix', () => {
+    const result = buildDefaultConvo({
+      models: [],
+      conversation: { ...baseConversation, promptPrefix: 'Old conversation prefix' },
+      endpoint: EModelEndpoint.agents,
+      lastConversationSetup: {
+        ...baseConversation,
+        endpoint: EModelEndpoint.agents,
+        agent_id: 'agent_saved',
+        promptPrefix: 'New preset prefix',
+      },
+    });
+
+    expect(result.promptPrefix).toBe('New preset prefix');
+  });
+
   describe('custom endpoint with defaultParamsEndpoint: anthropic', () => {
     const models = ['anthropic/claude-opus-4.5', 'anthropic/claude-sonnet-4'];
 

@@ -53,9 +53,10 @@ RUN \
 
 COPY --chown=node:node . .
 
-# Baked into the client bundle at build time (see client/src/data-provider/LearnLight/queries.ts)
-ARG VITE_LEARNLIGHT_CANVAS_SERVICE_URL=
-ENV VITE_LEARNLIGHT_CANVAS_SERVICE_URL=${VITE_LEARNLIGHT_CANVAS_SERVICE_URL}
+# Optional demo clock baked into the Vite client. Keep this aligned with the
+# runtime LEARNLIGHT_FAKE_NOW value when production demo mode is enabled.
+ARG VITE_LEARNLIGHT_FAKE_NOW=
+ENV VITE_LEARNLIGHT_FAKE_NOW=${VITE_LEARNLIGHT_FAKE_NOW}
 
 RUN \
     # React client build with configurable memory

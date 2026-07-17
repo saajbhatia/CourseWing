@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { useCanvasConnectionQuery } from './canvas';
+import { request } from 'librechat-data-provider';
+import {
+  useCanvasConnectionQuery,
+  currentCoursesQueryKeyPrefix,
+  courseMaterialsQueryKeyPrefix,
+} from './canvas';
 
 export type LearnLightCourseSummary = {
   id: string;
@@ -21,95 +26,63 @@ export type LearnLightCourseSummary = {
 export type LearnLightAssignment = {
   id: string;
   canvasAssignmentId: number;
-  courseId: string;
   name: string;
-  description: string | null;
   dueAt: string | null;
-  htmlUrl: string | null;
+  completed: boolean;
 };
 
-export type LearnLightModule = {
-  id: string;
-  canvasModuleId: number;
-  courseId: string;
-  name: string;
-  position: number | null;
-};
-
-export type LearnLightCourseFile = {
-  id: string;
-  canvasFileId: number;
-  courseId: string;
-  filename: string;
-  contentType: string | null;
-  url: string | null;
-  size: number | null;
-  updatedAt: string | null;
-};
-
-export type LearnLightCourseWithMaterials = Omit<
-  LearnLightCourseSummary,
-  'assignmentCount' | 'moduleCount' | 'fileCount'
-> & {
+export type LearnLightCourseView = {
   assignments: LearnLightAssignment[];
-  modules: LearnLightModule[];
-  files: LearnLightCourseFile[];
+  totalAssignments: number;
+  returnedAssignments: number;
+  truncated: boolean;
 };
 
-export const learnLightBaseUrl = (
-  import.meta.env.VITE_LEARNLIGHT_CANVAS_SERVICE_URL || 'http://localhost:3333'
-).replace(/\/+$/, '');
+/** Browser data requests go through LibreChat so auth and user-to-tenant mapping stay server-side. */
+export const learnLightBaseUrl = '/api/learnlight';
 
-async function fetchLearnLight<T>(path: string, tenantId?: string): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (tenantId) {
-    headers['X-Tenant-Id'] = tenantId;
-  }
-  const response = await fetch(`${learnLightBaseUrl}${path}`, { headers });
-
-  if (!response.ok) {
-    throw new Error(`LearnLight request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
+async function fetchLearnLight<T>(path: string): Promise<T> {
+  return request.get<T>(`${learnLightBaseUrl}${path}`);
 }
 
-/** Resolves the user's Canvas tenant once connected; undefined falls back to the shared default account. */
-function useTenantId(): { tenantId: string | undefined; ready: boolean } {
+/** Course data stays disabled until this authenticated user has a connected Canvas tenant. */
+function useCanvasAccess(): { accountKey: string | undefined; enabled: boolean } {
   const connection = useCanvasConnectionQuery();
   return {
-    tenantId: connection.data?.connected === true ? connection.data.tenantId : undefined,
-    ready: connection.isFetched,
+    accountKey: connection.data?.connected === true ? connection.data.canvasAccountKey : undefined,
+    enabled:
+      connection.isFetched &&
+      connection.data?.connected === true &&
+      typeof connection.data.canvasAccountKey === 'string',
   };
 }
 
 export function useCurrentCoursesQuery(): UseQueryResult<LearnLightCourseSummary[]> {
-  const { tenantId, ready } = useTenantId();
+  const { accountKey, enabled } = useCanvasAccess();
   return useQuery<LearnLightCourseSummary[]>(
-    ['learnlight', 'current-courses', learnLightBaseUrl, tenantId ?? 'default'],
-    () => fetchLearnLight<LearnLightCourseSummary[]>('/api/learnlight/courses/current', tenantId),
+    [...currentCoursesQueryKeyPrefix, accountKey ?? 'disconnected'],
+    () => fetchLearnLight<LearnLightCourseSummary[]>('/courses/current'),
     {
       staleTime: 30000,
       cacheTime: 300000,
       retry: 1,
-      enabled: ready,
+      enabled,
     },
   );
 }
 
 export function useCourseMaterialsQuery(
   canvasCourseId: number | null,
-): UseQueryResult<LearnLightCourseWithMaterials | undefined> {
-  const { tenantId, ready } = useTenantId();
-  return useQuery<LearnLightCourseWithMaterials[], Error, LearnLightCourseWithMaterials | undefined>(
-    ['learnlight', 'course-materials', learnLightBaseUrl, tenantId ?? 'default'],
-    () => fetchLearnLight<LearnLightCourseWithMaterials[]>('/api/learnlight/courses', tenantId),
+): UseQueryResult<LearnLightCourseView, Error> {
+  const { accountKey, enabled } = useCanvasAccess();
+  return useQuery<LearnLightCourseView, Error>(
+    [...courseMaterialsQueryKeyPrefix, accountKey ?? 'disconnected', canvasCourseId],
+    () => fetchLearnLight<LearnLightCourseView>(`/courses/${canvasCourseId}`),
     {
       staleTime: 300000,
       cacheTime: 600000,
       retry: 1,
-      enabled: canvasCourseId != null && ready,
-      select: (courses) => courses.find((course) => course.canvasCourseId === canvasCourseId),
+      enabled: canvasCourseId != null && enabled,
     },
   );
 }

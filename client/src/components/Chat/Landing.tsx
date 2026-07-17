@@ -80,7 +80,10 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const pendingGreeting = usePendingGreeting();
   const name = entity?.name ?? brandedSpecLabel;
   const description =
-    (pendingGreeting || entity?.description || brandedSpecDescription || conversation?.greeting) ??
+    ((startupConfig?.learnLightEnabled === true ? pendingGreeting : null) ||
+      entity?.description ||
+      brandedSpecDescription ||
+      conversation?.greeting) ??
     '';
   const descriptionIsHTML = description.trim().startsWith('<');
 

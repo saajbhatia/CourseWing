@@ -61,6 +61,28 @@ export function processValidSettings(queryParams: Record<string, string>) {
 }
 
 const allowedParams = Object.keys(tQueryParamsSchema.shape);
+
+const transientChatSearchParamKeys = ['learnlight'] as const;
+
+/**
+ * Conversation state updates rewrite the chat query string. Keep opaque, one-time workflow
+ * handles alive long enough for their owning hook to consume them; unlike model settings, these
+ * handles cannot be reconstructed from the conversation object.
+ */
+export function preserveTransientChatSearchParams(
+  nextParams: URLSearchParams,
+  currentParams: URLSearchParams,
+): URLSearchParams {
+  const result = new URLSearchParams(nextParams);
+  for (const key of transientChatSearchParamKeys) {
+    const value = currentParams.get(key);
+    if (value != null && !result.has(key)) {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
 export default function createChatSearchParams(
   input: TConversation | TPreset | Record<string, string> | null,
 ): URLSearchParams {

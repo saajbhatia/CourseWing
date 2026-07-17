@@ -1,20 +1,25 @@
 import { useCallback } from 'react';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useToastContext } from '@librechat/client';
 import { replaceSpecialVars, buildLoginRedirectUrl } from 'librechat-data-provider';
 import { useChatContext, useChatFormContext, useAddedChatContext } from '~/Providers';
 import { useLatestMessage } from '~/hooks/Messages/useLatestMessage';
 import { useAuthContext } from '~/hooks/AuthContext';
+import useLocalize from '~/hooks/useLocalize';
+import { storeGuestChatHandoff } from '~/utils/guestChatHandoff';
 import { mainTextareaId } from '~/common';
 import store from '~/store';
 
 export default function useSubmitMessage() {
   const { user, isAuthenticated } = useAuthContext();
+  const localize = useLocalize();
+  const { showToast } = useToastContext();
   const navigate = useNavigate();
   const location = useLocation();
   const methods = useChatFormContext();
   const { conversation: addedConvo } = useAddedChatContext();
-  const { ask, index, getMessages, setMessages } = useChatContext();
+  const { ask, index, conversation, getMessages, setMessages } = useChatContext();
   const latestMessage = useLatestMessage(index);
 
   const autoSendPrompts = useRecoilValue(store.autoSendPrompts);
@@ -26,7 +31,26 @@ export default function useSubmitMessage() {
         return console.warn('No data provided to submitMessage');
       }
       if (!isAuthenticated) {
-        navigate(buildLoginRedirectUrl(location.pathname, location.search, location.hash));
+        if (!storeGuestChatHandoff(data.text, conversation)) {
+          showToast({
+            status: 'error',
+            message: localize('com_ui_guest_handoff_error'),
+          });
+          return false;
+        }
+        const loginSearchParams = new URLSearchParams(location.search);
+        /** The one-time course handoff has already been consumed by useQueryParams. The private
+         * guest handoff now owns the prompt and course context, so do not replay a stale handle
+         * after authentication. Preserve unrelated query parameters. */
+        loginSearchParams.delete('learnlight');
+        const loginSearch = loginSearchParams.toString();
+        navigate(
+          buildLoginRedirectUrl(
+            location.pathname,
+            loginSearch ? `?${loginSearch}` : '',
+            location.hash,
+          ),
+        );
         return false;
       }
       const rootMessages = getMessages();
@@ -50,7 +74,20 @@ export default function useSubmitMessage() {
       }
       methods.reset();
     },
-    [ask, methods, addedConvo, setMessages, getMessages, latestMessage, isAuthenticated, navigate, location],
+    [
+      ask,
+      methods,
+      addedConvo,
+      conversation,
+      setMessages,
+      getMessages,
+      latestMessage,
+      isAuthenticated,
+      localize,
+      showToast,
+      navigate,
+      location,
+    ],
   );
 
   const submitPrompt = useCallback(

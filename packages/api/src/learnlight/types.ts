@@ -181,7 +181,7 @@ export type LearnLightMaterialTextResponse = {
   text: string | null;
 };
 
-export type LearnLightAssignmentFilter = 'upcoming' | 'past' | 'undated' | 'all';
+export type LearnLightAssignmentFilter = 'upcoming' | 'past' | 'graded' | 'undated' | 'all';
 
 export type LearnLightAssignmentDetailResponse = {
   course: LearnLightCourseRef;

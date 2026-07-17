@@ -608,6 +608,27 @@ describe('Conversation Utilities', () => {
         expect(data!.pages[0].conversations.filter((c) => c.conversationId === 'a').length).toBe(1);
       });
 
+      it('addConvoToAllQueries does not insert missing conversations into Canvas course caches', () => {
+        const canvasQueryKey = [
+          'allConversations',
+          { canvasCourseId: 42, canvasAccountScope: 'account-a' },
+        ];
+        queryClient.setQueryData(canvasQueryKey, {
+          pages: [{ conversations: [convoA], nextCursor: null }],
+          pageParams: [],
+        });
+
+        addConvoToAllQueries(queryClient, convoB);
+
+        const genericData = queryClient.getQueryData<InfiniteData<any>>(['allConversations']);
+        const canvasData = queryClient.getQueryData<InfiniteData<any>>(canvasQueryKey);
+        expect(genericData!.pages[0].conversations.map((c) => c.conversationId)).toEqual([
+          'b',
+          'a',
+        ]);
+        expect(canvasData!.pages[0].conversations.map((c) => c.conversationId)).toEqual(['a']);
+      });
+
       it('upsertConvoInAllQueries adds missing conversations to the top', () => {
         upsertConvoInAllQueries(queryClient, convoB);
         const data = queryClient.getQueryData<InfiniteData<{ conversations: TConversation[] }>>([
@@ -647,6 +668,37 @@ describe('Conversation Utilities', () => {
         ]);
 
         expect(data!.pages[0].conversations.map((c) => c.conversationId)).toEqual(['a', 'c']);
+      });
+
+      it('upsertConvoInAllQueries updates existing Canvas rows without inserting missing ones', () => {
+        const accountAQueryKey = [
+          'allConversations',
+          { canvasCourseId: 42, canvasAccountScope: 'account-a' },
+        ];
+        const accountBQueryKey = [
+          'allConversations',
+          { canvasCourseId: 42, canvasAccountScope: 'account-b' },
+        ];
+        queryClient.setQueryData(accountAQueryKey, {
+          pages: [{ conversations: [convoA], nextCursor: null }],
+          pageParams: [],
+        });
+        queryClient.setQueryData(accountBQueryKey, {
+          pages: [{ conversations: [], nextCursor: null }],
+          pageParams: [],
+        });
+
+        upsertConvoInAllQueries(queryClient, { ...convoA, title: 'Updated for account A' });
+        upsertConvoInAllQueries(queryClient, convoB);
+
+        const accountAData = queryClient.getQueryData<InfiniteData<any>>(accountAQueryKey);
+        const accountBData = queryClient.getQueryData<InfiniteData<any>>(accountBQueryKey);
+        expect(accountAData!.pages[0].conversations).toHaveLength(1);
+        expect(accountAData!.pages[0].conversations[0]).toMatchObject({
+          conversationId: 'a',
+          title: 'Updated for account A',
+        });
+        expect(accountBData!.pages[0].conversations).toEqual([]);
       });
 
       it('updateConvoInAllQueries updates correct convo', () => {
@@ -746,6 +798,24 @@ describe('Conversation Utilities', () => {
         ]);
         expect(mainData!.pages[0].conversations[0].conversationId).toBe('b');
         expect(otherData!.pages[0].conversations[0].conversationId).toBe('b');
+      });
+
+      it('addConversationToAllConversationsQueries skips Canvas course caches', () => {
+        const canvasQueryKey = [
+          'allConversations',
+          { canvasCourseId: 42, canvasAccountScope: 'account-a' },
+        ];
+        queryClient.setQueryData(canvasQueryKey, {
+          pages: [{ conversations: [], nextCursor: null }],
+          pageParams: [],
+        });
+
+        addConversationToAllConversationsQueries(queryClient, convoB);
+
+        const genericData = queryClient.getQueryData<InfiniteData<any>>(['allConversations']);
+        const canvasData = queryClient.getQueryData<InfiniteData<any>>(canvasQueryKey);
+        expect(genericData!.pages[0].conversations[0].conversationId).toBe('b');
+        expect(canvasData!.pages[0].conversations).toEqual([]);
       });
     });
   });

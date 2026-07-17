@@ -7,10 +7,12 @@ const {
   getOpenIdProxyDispatcher,
   resolveAppConfigForUser,
   getOpenIdIssuer,
+  isEmailDomainAllowed,
   isEnabled,
 } = require('@librechat/api');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
 const { getAppConfig } = require('~/server/services/Config');
+const { getTenantId } = require('@librechat/data-schemas');
 const { setupOpenId } = require('./openidStrategy');
 
 const mockCloudfrontFileSource = FileSources.cloudfront ?? 'cloudfront';
@@ -112,6 +114,7 @@ jest.mock('@librechat/data-schemas', () => ({
   tenantStorage: {
     run: jest.fn((_context, fn) => fn()),
   },
+  getTenantId: jest.fn(() => undefined),
   hashToken: jest.fn().mockResolvedValue('hashed-token'),
 }));
 jest.mock('~/cache/getLogStores', () =>
@@ -216,6 +219,10 @@ describe('setupOpenId', () => {
   beforeEach(async () => {
     // Clear previous mock calls and reset implementations
     jest.clearAllMocks();
+    isEmailDomainAllowed.mockReset().mockReturnValue(true);
+    resolveAppConfigForUser.mockReset().mockResolvedValue({});
+    getAppConfig.mockReset().mockResolvedValue({});
+    getTenantId.mockReset().mockReturnValue(undefined);
     isEnabled.mockImplementation(jest.requireActual('@librechat/api').isEnabled);
     require('~/cache/getLogStores').mockImplementation(() => ({
       get: jest.fn(),
@@ -550,6 +557,32 @@ describe('setupOpenId', () => {
         name: `${userinfo.given_name} ${userinfo.family_name}`,
       }),
     );
+  });
+
+  it('allows an admin-created OpenID account outside the registration allowlist', async () => {
+    const existingUser = {
+      _id: 'adminCreatedUserId',
+      provider: 'openid',
+      email: tokenset.claims().email,
+      username: 'admincreated',
+      name: 'Admin-created User',
+    };
+    findUser.mockImplementation(async (query) => {
+      if (query.email === tokenset.claims().email) {
+        return existingUser;
+      }
+      return null;
+    });
+    isEmailDomainAllowed.mockReturnValue(false);
+
+    const { user, details } = await validate(tokenset);
+
+    expect(details).toBeUndefined();
+    expect(user).toEqual(
+      expect.objectContaining({ _id: existingUser._id, openidId: tokenset.claims().sub }),
+    );
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+    expect(createUser).not.toHaveBeenCalled();
   });
 
   it('should block login when email exists with different provider', async () => {
@@ -1443,7 +1476,7 @@ describe('setupOpenId', () => {
 
   it('should save CloudFront IdP avatars under the shared avatar prefix', async () => {
     const { getStrategyFunctions } = require('~/server/services/Files/strategies');
-    getAppConfig.mockResolvedValueOnce({ fileStrategy: mockCloudfrontFileSource });
+    getAppConfig.mockResolvedValue({ fileStrategy: mockCloudfrontFileSource });
 
     const { user } = await validate(tokenset);
     const strategyResult =
@@ -1835,7 +1868,7 @@ describe('setupOpenId', () => {
       );
     });
 
-    it('re-enforces tenant login policy after role sync changes the role', async () => {
+    it('does not apply registration restrictions after role sync for an existing user', async () => {
       const existingUser = {
         _id: 'existingTenantUserId',
         provider: 'openid',
@@ -1846,7 +1879,6 @@ describe('setupOpenId', () => {
         tenantId: 'tenant-a',
         role: 'USER',
       };
-      const { isEmailDomainAllowed } = require('@librechat/api');
 
       findUser.mockImplementation(async (query) => {
         if (query.openidId === tokenset.claims().sub || query.email === tokenset.claims().email) {
@@ -1858,16 +1890,17 @@ describe('setupOpenId', () => {
         roles: ['requiredRole', 'BASIC-USER'],
         permissions: ['not-admin'],
       });
-      // Pre-sync domain check passes; the post-sync re-resolved config rejects the domain.
-      isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
+      isEmailDomainAllowed.mockReturnValue(false);
       resolveAppConfigForUser.mockResolvedValue({
         registration: { allowedDomains: ['restricted.com'] },
       });
 
       const { user, details } = await validate(tokenset);
 
-      expect(user).toBe(false);
-      expect(details).toEqual({ message: 'Email domain not allowed' });
+      expect(details).toBeUndefined();
+      expect(user).toEqual(expect.objectContaining({ role: 'BASIC-USER' }));
+      expect(resolveAppConfigForUser).toHaveBeenCalledTimes(1);
+      expect(isEmailDomainAllowed).not.toHaveBeenCalled();
     });
 
     it('reuses required-role overage groups for role sync', async () => {
@@ -2502,17 +2535,26 @@ describe('setupOpenId', () => {
       expect(resolveAppConfigForUser).toHaveBeenCalledWith(getAppConfig, existingUser);
     });
 
-    it('should use baseConfig for new user without calling resolveAppConfigForUser', async () => {
+    it('should use merged config for a new user without tenant-user resolution', async () => {
       findUser.mockResolvedValue(null);
 
       await validate(tokenset);
 
       expect(resolveAppConfigForUser).not.toHaveBeenCalled();
       expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
+      expect(getAppConfig).toHaveBeenCalledWith({});
     });
 
-    it('should block login when tenant config restricts the domain', async () => {
-      const { isEmailDomainAllowed } = require('@librechat/api');
+    it('uses the pre-auth tenant when resolving a new OpenID registration policy', async () => {
+      findUser.mockResolvedValue(null);
+      getTenantId.mockReturnValue('tenant-new');
+
+      await validate(tokenset);
+
+      expect(getAppConfig).toHaveBeenCalledWith({ tenantId: 'tenant-new' });
+    });
+
+    it('allows an existing tenant user when registration restricts the domain', async () => {
       const existingUser = {
         _id: 'openid-tenant-blocked',
         provider: 'openid',
@@ -2525,11 +2567,29 @@ describe('setupOpenId', () => {
       resolveAppConfigForUser.mockResolvedValue({
         registration: { allowedDomains: ['other.com'] },
       });
-      isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
+      isEmailDomainAllowed.mockReturnValue(false);
 
       const { user, details } = await validate(tokenset);
+      expect(user).toEqual(expect.objectContaining({ _id: existingUser._id }));
+      expect(details).toBeUndefined();
+      expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+    });
+
+    it('blocks creation of a new OpenID account outside the registration allowlist', async () => {
+      findUser.mockResolvedValue(null);
+      getAppConfig.mockImplementation(async (options) =>
+        options.baseOnly
+          ? { registration: { allowedDomains: ['yaml.example'] } }
+          : { registration: { allowedDomains: ['merged.example'] } },
+      );
+      isEmailDomainAllowed.mockReturnValue(false);
+
+      const { user, details } = await validate(tokenset);
+
       expect(user).toBe(false);
       expect(details).toEqual({ message: 'Email domain not allowed' });
+      expect(isEmailDomainAllowed).toHaveBeenCalledWith('test@example.com', ['merged.example']);
+      expect(createUser).not.toHaveBeenCalled();
     });
   });
 });

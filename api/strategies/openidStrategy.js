@@ -3,7 +3,7 @@ const { get } = require('lodash');
 const passport = require('passport');
 const client = require('openid-client');
 const jwtDecode = require('jsonwebtoken/decode');
-const { hashToken, logger, tenantStorage } = require('@librechat/data-schemas');
+const { hashToken, logger, getTenantId, tenantStorage } = require('@librechat/data-schemas');
 const { Strategy: OpenIDStrategy } = require('openid-client/passport');
 const { CacheKeys, ErrorTypes, SystemRoles } = require('librechat-data-provider');
 const {
@@ -580,13 +580,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
   const openidIssuer = getOpenIdIssuer(claims, openidConfig);
 
   const baseConfig = await getAppConfig({ baseOnly: true });
-  if (!isEmailDomainAllowed(email, baseConfig?.registration?.allowedDomains)) {
-    logger.error(
-      `[OpenID Strategy] Authentication blocked - email domain not allowed [Identifier: ${email}]`,
-    );
-    throw new Error('Email domain not allowed');
-  }
-
   const result = await findOpenIDUser({
     findUser,
     email: email,
@@ -602,14 +595,7 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
     throw new Error(ErrorTypes.AUTH_FAILED);
   }
 
-  const appConfig = user?.tenantId ? await resolveAppConfigForUser(getAppConfig, user) : baseConfig;
-
-  if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
-    logger.error(
-      `[OpenID Strategy] Authentication blocked - email domain not allowed [Identifier: ${email}]`,
-    );
-    throw new Error('Email domain not allowed');
-  }
+  let appConfig = user?.tenantId ? await resolveAppConfigForUser(getAppConfig, user) : baseConfig;
 
   const fullName = getFullName(userinfo);
 
@@ -684,6 +670,15 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
   }
 
   if (!user) {
+    const tenantId = getTenantId();
+    appConfig = await getAppConfig(tenantId ? { tenantId } : {});
+    if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
+      logger.error(
+        `[OpenID Strategy] Registration blocked - email domain not allowed [Identifier: ${email}]`,
+      );
+      throw new Error('Email domain not allowed');
+    }
+
     user = {
       provider: 'openid',
       openidId: userinfo.sub,
@@ -759,7 +754,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
   }
 
   if (!adminRoleGranted) {
-    const roleBeforeSync = user.role;
     await applyOpenIdRoleSync({
       user,
       username,
@@ -768,21 +762,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
       userinfo,
       resolvedOverageGroups,
     });
-    /**
-     * The earlier login-policy check ran with the pre-sync role. If role sync moved a
-     * tenant user into a different role, re-resolve the tenant config and re-enforce
-     * `allowedDomains` so role-scoped overrides for the new role are honored and a token
-     * cannot complete login under the previous role's looser policy.
-     */
-    if (user?.tenantId && user.role !== roleBeforeSync) {
-      const postSyncConfig = await resolveAppConfigForUser(getAppConfig, user);
-      if (!isEmailDomainAllowed(email, postSyncConfig?.registration?.allowedDomains)) {
-        logger.error(
-          `[OpenID Strategy] Authentication blocked after role sync - email domain not allowed [Identifier: ${email}]`,
-        );
-        throw new Error('Email domain not allowed');
-      }
-    }
   }
 
   if (!!userinfo && userinfo.picture && !user.avatar?.includes('manual=true')) {

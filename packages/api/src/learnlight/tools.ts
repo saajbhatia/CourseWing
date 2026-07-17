@@ -40,13 +40,32 @@ export function isLearnLightToolKey(toolKey: string): toolKey is LearnLightToolK
   return (learnLightToolKeys as readonly string[]).includes(toolKey);
 }
 
-const courseIdParam = z
-  .number()
-  .int()
-  .optional()
-  .describe(
-    "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result (get_assignments results include each course's ID). NEVER guess or invent an ID; when you don't have one, omit the parameter to cover all of the student's current courses.",
-  );
+/** Single source of truth for tool/param descriptions — also consumed by the JSON registry definitions. */
+export const learnLightToolDescriptions: Record<LearnLightToolKey, string> = {
+  [LEARNLIGHT_GET_ASSIGNMENTS]:
+    "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, teacher feedback on the submission, and the student's own submitted work (text-entry excerpt with a materialId for the full text, uploaded files readable via learnlight_read_material, or a submitted URL). Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, how a graded assignment was scored, or what the student turned in — narrow with query to get the full breakdown for one assignment.",
+  [LEARNLIGHT_GET_MASTERY]:
+    "Get the student's Canvas Learning Mastery gradebook: each learning outcome/standard (e.g. \"Analyzing and interpreting data\") with the student's current score, the mastery threshold, a rating on the course's scale (Exemplary/Accomplished/Developing…), how many times it was assessed, and the most recent assessment. Use for questions about learning mastery, outcomes, standards, skills, or which areas the student is strongest/weakest in. Courses without published outcomes return an empty list — then infer strengths from assignment scores instead.",
+  [LEARNLIGHT_GET_MODULES]:
+    'Get the course syllabus (when posted) and the structure of a Canvas course: its modules/units in order, with the items (pages, files, assignments) inside each. Use for syllabus questions, "what\'s in Unit 3", or "what does this class cover".',
+  [LEARNLIGHT_SEARCH_MATERIALS]:
+    'Full-text search across synced Canvas course content: files (study guides, readings, handouts), Canvas pages (unit overviews, lessons), syllabi, and the student\'s own submitted work (kind "submission"). Returns matching excerpts with a materialId for learnlight_read_material. Use before answering questions that should be grounded in the course\'s own materials.',
+  [LEARNLIGHT_READ_MATERIAL]:
+    'Read the extracted text of a synced Canvas material (file, page, syllabus, or the student\'s own submission), one page (~4000 characters) at a time. Use after learnlight_search_materials when an excerpt is not enough, or when the student asks about a whole document — including their own submitted essay or file (submission materialIds appear in learnlight_get_assignments detail results). For a course file, the materialId is "<courseId>:file:<canvasFileId>". Check totalPages to read further pages. Results may include a links array of documents referenced by the material — file links are readable via their canvasFileId, and external links carry a url you can give the student directly.',
+  [LEARNLIGHT_SEND_FEEDBACK]:
+    "Send the student's feedback ABOUT LEARNLIGHT ITSELF (this AI tutor app) to the LearnLight team: bug reports, feature ideas, confusing behavior, praise, complaints about the app. Use when the student expresses feedback about the app — not about their coursework, teachers, or grades. Send it right away with their feedback as the message; the result will tell you what to say next.",
+};
+
+export const courseIdDescription =
+  "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result (get_assignments results include each course's ID). NEVER guess or invent an ID; when you don't have one, omit the parameter to cover all of the student's current courses.";
+
+export const requiredCourseIdDescription =
+  "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result. If you don't have one, call learnlight_get_assignments first (its results include each course's ID). NEVER guess or invent an ID.";
+
+export const assignmentFilterDescription =
+  'Which assignments to return. Defaults to upcoming (soonest first); graded filters before applying the limit; past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.';
+
+const courseIdParam = z.number().int().optional().describe(courseIdDescription);
 
 function toToolResult(payload: unknown): string {
   return JSON.stringify(payload);
@@ -63,7 +82,6 @@ function toToolError(toolKey: string, error: unknown): string {
 
 export type LearnLightToolOptions = {
   tenantId?: string | null;
-  conversationId?: string | null;
   userName?: string | null;
   userEmail?: string | null;
 };
@@ -107,16 +125,13 @@ function createGetAssignmentsTool(toolOptions: LearnLightToolOptions): DynamicSt
     },
     {
       name: LEARNLIGHT_GET_ASSIGNMENTS,
-      description:
-        "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, teacher feedback on the submission, and the student's own submitted work (text-entry excerpt with a materialId for the full text, uploaded files readable via learnlight_read_material, or a submitted URL). Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, how a graded assignment was scored, or what the student turned in — narrow with query to get the full breakdown for one assignment.",
+      description: learnLightToolDescriptions[LEARNLIGHT_GET_ASSIGNMENTS],
       schema: z.object({
         canvasCourseId: courseIdParam,
         filter: z
-          .enum(['upcoming', 'past', 'undated', 'all'])
+          .enum(['upcoming', 'past', 'graded', 'undated', 'all'])
           .optional()
-          .describe(
-            'Which assignments to return. Defaults to upcoming (soonest first); past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.',
-          ),
+          .describe(assignmentFilterDescription),
         query: z.string().optional().describe('Filter assignments by name (substring match).'),
         dueAfter: z
           .string()
@@ -149,8 +164,7 @@ function createGetMasteryTool(toolOptions: LearnLightToolOptions): DynamicStruct
     },
     {
       name: LEARNLIGHT_GET_MASTERY,
-      description:
-        "Get the student's Canvas Learning Mastery gradebook: each learning outcome/standard (e.g. \"Analyzing and interpreting data\") with the student's current score, the mastery threshold, a rating on the course's scale (Exemplary/Accomplished/Developing…), how many times it was assessed, and the most recent assessment. Use for questions about learning mastery, outcomes, standards, skills, or which areas the student is strongest/weakest in. Courses without published outcomes return an empty list — then infer strengths from assignment scores instead.",
+      description: learnLightToolDescriptions[LEARNLIGHT_GET_MASTERY],
       schema: z.object({
         canvasCourseId: courseIdParam,
       }),
@@ -170,15 +184,9 @@ function createGetModulesTool(toolOptions: LearnLightToolOptions): DynamicStruct
     },
     {
       name: LEARNLIGHT_GET_MODULES,
-      description:
-        'Get the course syllabus (when posted) and the structure of a Canvas course: its modules/units in order, with the items (pages, files, assignments) inside each. Use for syllabus questions, "what\'s in Unit 3", or "what does this class cover".',
+      description: learnLightToolDescriptions[LEARNLIGHT_GET_MODULES],
       schema: z.object({
-        canvasCourseId: z
-          .number()
-          .int()
-          .describe(
-            "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result. If you don't have one, call learnlight_get_assignments first (its results include each course's ID). NEVER guess or invent an ID.",
-          ),
+        canvasCourseId: z.number().int().describe(requiredCourseIdDescription),
       }),
     },
   );
@@ -208,8 +216,7 @@ function createSearchMaterialsTool(toolOptions: LearnLightToolOptions): DynamicS
     },
     {
       name: LEARNLIGHT_SEARCH_MATERIALS,
-      description:
-        'Full-text search across synced Canvas course content: files (study guides, readings, handouts), Canvas pages (unit overviews, lessons), syllabi, and the student\'s own submitted work (kind "submission"). Returns matching excerpts with a materialId for learnlight_read_material. Use before answering questions that should be grounded in the course\'s own materials.',
+      description: learnLightToolDescriptions[LEARNLIGHT_SEARCH_MATERIALS],
       schema: z.object({
         query: z.string().describe('Keywords to search for (topic, concept, chapter, etc.).'),
         canvasCourseId: courseIdParam,
@@ -234,8 +241,7 @@ function createReadMaterialTool(toolOptions: LearnLightToolOptions): DynamicStru
     },
     {
       name: LEARNLIGHT_READ_MATERIAL,
-      description:
-        'Read the extracted text of a synced Canvas material (file, page, syllabus, or the student\'s own submission), one page (~4000 characters) at a time. Use after learnlight_search_materials when an excerpt is not enough, or when the student asks about a whole document — including their own submitted essay or file (submission materialIds appear in learnlight_get_assignments detail results). For a course file, the materialId is "<courseId>:file:<canvasFileId>". Check totalPages to read further pages. Results may include a links array of documents referenced by the material — file links are readable via their canvasFileId, and external links carry a url you can give the student directly.',
+      description: learnLightToolDescriptions[LEARNLIGHT_READ_MATERIAL],
       schema: z.object({
         materialId: z
           .string()
@@ -248,37 +254,23 @@ function createReadMaterialTool(toolOptions: LearnLightToolOptions): DynamicStru
   );
 }
 
-const FEEDBACK_SENT_ASK_SHARE =
-  'Feedback sent to the LearnLight team — thank the student. Then ask ONE short follow-up question: would they like to share this chat along with the feedback so the team can see the full context? If they say yes, call learnlight_send_feedback again with only shareChat=true. If they decline, drop it.';
-
-const FEEDBACK_SENT_WITH_CHAT =
-  'Feedback sent to the LearnLight team with this chat attached — thank the student.';
-
-const CHAT_SHARED = 'This chat is now attached to the feedback — thank the student.';
-
-const CHAT_SHARE_FAILED =
-  'There was no earlier feedback from this chat to attach it to — send the feedback with a message first.';
+const FEEDBACK_SENT = 'Feedback sent to the LearnLight team — thank the student.';
 
 function createSendFeedbackTool(toolOptions: LearnLightToolOptions): DynamicStructuredTool {
   return tool(
-    async ({ message, category, shareChat }) => {
+    async ({ message, category }) => {
       try {
-        if (message == null && shareChat !== true) {
+        if (message == null) {
           return 'Nothing was sent — include the feedback message.';
         }
-        const result = await sendFeedback({
+        await sendFeedback({
           message,
           category,
-          shareChat,
-          conversationId: toolOptions.conversationId,
           userName: toolOptions.userName,
           userEmail: toolOptions.userEmail,
           tenantId: toolOptions.tenantId,
         });
-        if (message != null) {
-          return shareChat === true ? FEEDBACK_SENT_WITH_CHAT : FEEDBACK_SENT_ASK_SHARE;
-        }
-        return (result.updated ?? 0) > 0 ? CHAT_SHARED : CHAT_SHARE_FAILED;
+        return FEEDBACK_SENT;
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         logger.warn(`[LearnLight] ${LEARNLIGHT_SEND_FEEDBACK} failed: ${detail}`);
@@ -287,25 +279,17 @@ function createSendFeedbackTool(toolOptions: LearnLightToolOptions): DynamicStru
     },
     {
       name: LEARNLIGHT_SEND_FEEDBACK,
-      description:
-        "Send the student's feedback ABOUT LEARNLIGHT ITSELF (this AI tutor app) to the LearnLight team: bug reports, feature ideas, confusing behavior, praise, complaints about the app. Use when the student expresses feedback about the app — not about their coursework, teachers, or grades. Send it right away with their feedback as the message; the result will tell you what to say next.",
+      description: learnLightToolDescriptions[LEARNLIGHT_SEND_FEEDBACK],
       schema: z.object({
         message: z
           .string()
+          .max(10_000)
           .optional()
-          .describe(
-            "The student's feedback in their own words (lightly cleaned up). Required when sending new feedback; omit on a shareChat-only follow-up call.",
-          ),
+          .describe("The student's feedback in their own words (lightly cleaned up)."),
         category: z
           .enum(['bug', 'idea', 'praise', 'other'])
           .optional()
           .describe('What kind of feedback this is.'),
-        shareChat: z
-          .boolean()
-          .optional()
-          .describe(
-            'Set true ONLY after the student explicitly agrees to share this chat with the team. Call with shareChat=true and no message to attach the chat to feedback already sent.',
-          ),
       }),
     },
   );

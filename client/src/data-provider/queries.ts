@@ -45,14 +45,37 @@ export const useGetPresetsQuery = (
   });
 };
 
+export const conversationQueryKey = (id: string, cacheScope?: string) =>
+  cacheScope
+    ? ([QueryKeys.conversation, id, { canvasAccountScope: cacheScope }] as const)
+    : ([QueryKeys.conversation, id] as const);
+
+export const conversationsQueryKey = (params: ConversationListParams, cacheScope?: string) => {
+  const { canvasCourseId, isArchived, sortBy, sortDirection, tags, search, projectId } = params;
+  return [
+    isArchived ? QueryKeys.archivedConversations : QueryKeys.allConversations,
+    {
+      canvasCourseId,
+      canvasAccountScope: canvasCourseId != null ? (cacheScope ?? 'unscoped') : undefined,
+      isArchived,
+      sortBy,
+      sortDirection,
+      tags,
+      search,
+      projectId,
+    },
+  ] as const;
+};
+
 export const useGetConvoIdQuery = (
   id: string,
   config?: UseQueryOptions<t.TConversation>,
+  cacheScope?: string,
 ): QueryObserverResult<t.TConversation> => {
   const queryClient = useQueryClient();
 
   return useQuery<t.TConversation>(
-    [QueryKeys.conversation, id],
+    conversationQueryKey(id, cacheScope),
     () => {
       // Try to find in all fetched infinite pages
       const convosQuery = queryClient.getQueryData<InfiniteData<ConversationCursorData>>(
@@ -61,7 +84,9 @@ export const useGetConvoIdQuery = (
       );
       const found = findConversationInInfinite(convosQuery, id);
 
-      if (found && found.messages != null) {
+      // Canvas scope is derived server-side per account. Never satisfy a scoped detail
+      // request from the account-agnostic conversation-list cache.
+      if (cacheScope == null && found && found.messages != null) {
         return found;
       }
       // Otherwise, fetch from API
@@ -85,16 +110,15 @@ export const useGetConvoIdQuery = (
 export const useConversationsInfiniteQuery = (
   params: ConversationListParams,
   config?: UseInfiniteQueryOptions<ConversationListResponse, unknown>,
+  cacheScope?: string,
 ) => {
-  const { isArchived, sortBy, sortDirection, tags, search, projectId } = params;
+  const { canvasCourseId, isArchived, sortBy, sortDirection, tags, search, projectId } = params;
 
   return useInfiniteQuery<ConversationListResponse>({
-    queryKey: [
-      isArchived ? QueryKeys.archivedConversations : QueryKeys.allConversations,
-      { isArchived, sortBy, sortDirection, tags, search, projectId },
-    ],
+    queryKey: conversationsQueryKey(params, cacheScope),
     queryFn: ({ pageParam }) =>
       dataService.listConversations({
+        canvasCourseId,
         isArchived,
         sortBy,
         sortDirection,

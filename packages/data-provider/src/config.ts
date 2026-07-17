@@ -68,6 +68,7 @@ export const excludedKeys = new Set([
   'disableParams',
   'chatProjectId',
   'canvasCourseId',
+  'canvasAccountKey',
 ]);
 
 export enum SettingsViews {
@@ -1504,6 +1505,7 @@ export type TStartupConfig = {
   sharePointPickerGraphScope?: string;
   sharePointPickerSharePointScope?: string;
   openidReuseTokens?: boolean;
+  learnLightEnabled?: boolean;
   allowAccountDeletion: boolean;
   minPasswordLength?: number;
   webSearch?: {

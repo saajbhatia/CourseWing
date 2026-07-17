@@ -2,6 +2,7 @@ import { logger } from '@librechat/data-schemas';
 import {
   Tools,
   Constants,
+  extractCanvasCourseId,
   isAgentsEndpoint,
   isEphemeralAgentId,
   encodeEphemeralAgentId,
@@ -19,6 +20,22 @@ import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
 type ModelParametersWithPromptPrefix = AgentModelParameters & { promptPrefix?: string | null };
+
+function applyLearnLightCourseOverlay(agent: Agent, promptPrefix: string): Agent {
+  const instructions = [agent.instructions, promptPrefix]
+    .filter((section): section is string => typeof section === 'string' && section.trim() !== '')
+    .join('\n\n');
+  const tools = new Set(agent.tools ?? []);
+  for (const toolKey of learnLightToolKeys) {
+    tools.add(toolKey);
+  }
+
+  return {
+    ...agent,
+    instructions,
+    tools: Array.from(tools),
+  };
+}
 
 export interface LoadAgentDeps {
   getAgent: (searchParameter: { id: string }) => Promise<Agent | null>;
@@ -41,6 +58,8 @@ export interface LoadAgentParams {
   agent_id: string;
   endpoint: string;
   model_parameters?: AgentModelParameters & { model?: string };
+  /** Applies request-scoped LearnLight context to the primary chat agent only. */
+  applyLearnLightCourseContext?: boolean;
 }
 
 /**
@@ -175,7 +194,7 @@ export async function loadAgent(
   params: LoadAgentParams,
   deps: LoadAgentDeps,
 ): Promise<Agent | null> {
-  const { req, spec, agent_id, endpoint, model_parameters } = params;
+  const { req, spec, agent_id, endpoint, model_parameters, applyLearnLightCourseContext } = params;
   if (!agent_id) {
     return null;
   }
@@ -191,5 +210,24 @@ export async function loadAgent(
   // Set version count from versions array length
   const agentWithVersion = agent as Agent & { versions?: unknown[]; version?: number };
   agentWithVersion.version = agentWithVersion.versions ? agentWithVersion.versions.length : 0;
-  return agent;
+
+  const promptPrefix = req.body?.promptPrefix;
+  if (!isLearnLightEnabled() && Array.isArray(agentWithVersion.tools)) {
+    const filteredTools = agentWithVersion.tools.filter(
+      (toolKey) => !learnLightToolKeys.includes(toolKey as (typeof learnLightToolKeys)[number]),
+    );
+    if (filteredTools.length !== agentWithVersion.tools.length) {
+      return { ...agentWithVersion, tools: filteredTools };
+    }
+  }
+  const isLearnLightCourseRequest =
+    applyLearnLightCourseContext === true &&
+    isLearnLightEnabled() &&
+    typeof promptPrefix === 'string' &&
+    extractCanvasCourseId(promptPrefix) != null;
+  if (isLearnLightCourseRequest) {
+    return applyLearnLightCourseOverlay(agentWithVersion, promptPrefix);
+  }
+
+  return agentWithVersion;
 }

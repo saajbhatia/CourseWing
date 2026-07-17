@@ -11,7 +11,6 @@ jest.mock(
 jest.mock(
   'librechat-data-provider',
   () => ({
-    ErrorTypes: {},
     SystemRoles: { USER: 'USER', ADMIN: 'ADMIN' },
     errorsToString: jest.fn(),
   }),
@@ -25,7 +24,6 @@ jest.mock(
     isEmailDomainAllowed: jest.fn(),
     math: jest.fn((val, fallback) => (val ? Number(val) : fallback)),
     shouldUseSecureCookie: jest.fn(() => false),
-    resolveAppConfigForUser: jest.fn(async (_getAppConfig, _user) => ({})),
     setCloudFrontCookies: jest.fn(() => true),
     getCloudFrontConfig: jest.fn(() => ({
       domain: 'https://cdn.example.com',
@@ -76,7 +74,6 @@ const {
   checkEmailConfig,
   shouldUseSecureCookie,
   isEmailDomainAllowed,
-  resolveAppConfigForUser,
   setCloudFrontCookies,
   getCloudFrontConfig,
   parseCloudFrontCookieScope,
@@ -578,65 +575,46 @@ describe('verifyEmail public response handling', () => {
 describe('requestPasswordReset', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    isEmailDomainAllowed.mockReturnValue(true);
+    checkEmailConfig.mockReturnValue(true);
+  });
+
+  it('should issue a reset for an existing account outside the registration allowlist', async () => {
+    isEmailDomainAllowed.mockReturnValue(false);
     getAppConfig.mockResolvedValue({
       registration: { allowedDomains: ['example.com'] },
     });
-    resolveAppConfigForUser.mockResolvedValue({
-      registration: { allowedDomains: ['example.com'] },
+    const user = { _id: 'existing-user', email: 'existing@blocked.example' };
+    findUser.mockResolvedValue(user);
+
+    const req = { body: { email: user.email }, ip: '127.0.0.1' };
+    const result = await requestPasswordReset(req);
+
+    expect(result).toEqual({
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
     });
+    expect(getAppConfig).not.toHaveBeenCalled();
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+    expect(createToken).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: user._id, type: 'password_reset' }),
+    );
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ email: user.email }));
   });
 
-  it('should fast-fail with base config before DB lookup for blocked domains', async () => {
-    isEmailDomainAllowed.mockReturnValue(false);
+  it('should return the generic response for an unknown address without issuing a token', async () => {
+    findUser.mockResolvedValue(null);
 
-    const req = { body: { email: 'blocked@evil.com' }, ip: '127.0.0.1' };
-    const result = await requestPasswordReset(req);
+    const result = await requestPasswordReset({
+      body: { email: 'missing@blocked.example' },
+      ip: '127.0.0.1',
+    });
 
-    expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
-    expect(findUser).not.toHaveBeenCalled();
-    expect(result).toBeInstanceOf(Error);
-  });
-
-  it('should call resolveAppConfigForUser for tenant user', async () => {
-    const user = {
-      _id: 'user-tenant',
-      email: 'user@example.com',
-      tenantId: 'tenant-x',
-      role: 'USER',
-    };
-    findUser.mockResolvedValue(user);
-
-    const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
-    await requestPasswordReset(req);
-
-    expect(resolveAppConfigForUser).toHaveBeenCalledWith(getAppConfig, user);
-  });
-
-  it('should reuse baseConfig for non-tenant user without calling resolveAppConfigForUser', async () => {
-    findUser.mockResolvedValue({ _id: 'user-no-tenant', email: 'user@example.com' });
-
-    const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
-    await requestPasswordReset(req);
-
-    expect(resolveAppConfigForUser).not.toHaveBeenCalled();
-  });
-
-  it('should return generic response when tenant config blocks the domain (non-enumerable)', async () => {
-    const user = {
-      _id: 'user-tenant',
-      email: 'user@example.com',
-      tenantId: 'tenant-x',
-      role: 'USER',
-    };
-    findUser.mockResolvedValue(user);
-    isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
-
-    const req = { body: { email: 'user@example.com' }, ip: '127.0.0.1' };
-    const result = await requestPasswordReset(req);
-
-    expect(result).not.toBeInstanceOf(Error);
-    expect(result.message).toContain('If an account with that email exists');
+    expect(result).toEqual({
+      message: 'If an account with that email exists, a password reset link has been sent to it.',
+    });
+    expect(createToken).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(getAppConfig).not.toHaveBeenCalled();
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
   });
 
   it('should only delete existing password reset tokens when issuing a new reset link', async () => {

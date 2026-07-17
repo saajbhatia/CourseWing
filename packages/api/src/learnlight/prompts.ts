@@ -4,7 +4,7 @@ import {
   LEARNLIGHT_PERSONA_MARKER,
 } from 'librechat-data-provider';
 import type { AssistanceLevel, LearnLightPersona } from 'librechat-data-provider';
-import { getLearnLightNow, getLearnLightTimezone } from './config';
+import { getLearnLightNow, formatLearnLightDate } from './config';
 
 const GRADE_DISCRETION =
   'Grades: when grades inform your answer (prioritizing, encouragement, picking weak spots), speak qualitatively — "strong", "your lowest", "dipped recently" — and do not quote exact scores, percentages, or letter grades unless the student explicitly asks for their numbers.';
@@ -76,15 +76,7 @@ Be transparent about how you work if asked, acknowledge uncertainty plainly, and
 ].join('\n');
 
 function formatTodayLine(): string {
-  const formatted = new Intl.DateTimeFormat('en-US', {
-    timeZone: getLearnLightTimezone(),
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(getLearnLightNow());
-
-  return `Today's date: ${formatted}.`;
+  return `Today's date: ${formatLearnLightDate(getLearnLightNow(), { withYear: true })}.`;
 }
 
 export function buildLearningDefault(): string {

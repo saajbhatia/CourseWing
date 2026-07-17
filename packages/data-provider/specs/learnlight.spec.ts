@@ -1,7 +1,6 @@
 import {
   extractAssistanceLevel,
   stripLearnLightBlocks,
-  setAssistanceLevelInPrefix,
   LEARNLIGHT_LEVEL_LINE,
   LEARNLIGHT_POLICY_MARKER,
   LEARNLIGHT_CARD_MARKER,
@@ -76,36 +75,5 @@ describe('legacy LearnLink compatibility', () => {
     expect(stripLearnLightBlocks(legacyPrefix)).toBe(
       `${basePrefix}\nLearnLink assistance level: hints`,
     );
-  });
-
-  it('replaces a pre-rename level line with the new marker', () => {
-    const result = setAssistanceLevelInPrefix(legacyPrefix, 'worked');
-    expect(result).toBe(`${basePrefix}\n${LEARNLIGHT_LEVEL_LINE} worked`);
-    expect(result).not.toContain('LearnLink');
-  });
-});
-
-describe('setAssistanceLevelInPrefix', () => {
-  it('appends a level line to a bare prefix', () => {
-    expect(setAssistanceLevelInPrefix(basePrefix, 'discuss')).toBe(
-      `${basePrefix}\n${LEARNLIGHT_LEVEL_LINE} discuss`,
-    );
-  });
-
-  it('creates just the level line when there is no prefix', () => {
-    expect(setAssistanceLevelInPrefix(null, 'full')).toBe(`${LEARNLIGHT_LEVEL_LINE} full`);
-    expect(setAssistanceLevelInPrefix('', 'hints')).toBe(`${LEARNLIGHT_LEVEL_LINE} hints`);
-  });
-
-  it('replaces an existing level line and strips server-appended blocks', () => {
-    const result = setAssistanceLevelInPrefix(withBlocks, 'worked');
-    expect(result).toBe(`${basePrefix}\n${LEARNLIGHT_LEVEL_LINE} worked`);
-    expect(extractAssistanceLevel(result)).toBe('worked');
-  });
-
-  it('round-trips with extractAssistanceLevel', () => {
-    const result = setAssistanceLevelInPrefix(basePrefix, 'discuss');
-    expect(extractAssistanceLevel(result)).toBe('discuss');
-    expect(extractAssistanceLevel(setAssistanceLevelInPrefix(result, 'full'))).toBe('full');
   });
 });

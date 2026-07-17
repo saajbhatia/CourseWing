@@ -1,6 +1,6 @@
 const fs = require('fs');
 const LdapStrategy = require('passport-ldapauth');
-const { logger } = require('@librechat/data-schemas');
+const { logger, getTenantId } = require('@librechat/data-schemas');
 const { SystemRoles, ErrorTypes } = require('librechat-data-provider');
 const {
   isEnabled,
@@ -117,18 +117,12 @@ const ldapLogin = new LdapStrategy(ldapOptions, async (userinfo, done) => {
       );
     }
 
-    // Domain check before findUser for two-phase fast-fail (consistent with SAML/OpenID/social).
-    // This means cross-provider users from blocked domains get 'Email domain not allowed'
-    // instead of AUTH_FAILED — both deny access.
     const baseConfig = await getAppConfig({ baseOnly: true });
-    if (!isEmailDomainAllowed(mail, baseConfig?.registration?.allowedDomains)) {
-      logger.error(
-        `[LDAP Strategy] Authentication blocked - email domain not allowed [Email: ${mail}]`,
-      );
-      return done(null, false, { message: 'Email domain not allowed' });
+    let user = await findUser({ ldapId });
+    if (!user) {
+      user = await findUser({ email: mail });
     }
 
-    let user = await findUser({ ldapId });
     if (user && user.provider !== 'ldap') {
       logger.info(
         `[ldapStrategy] User ${user.email} already exists with provider ${user.provider}`,
@@ -138,18 +132,25 @@ const ldapLogin = new LdapStrategy(ldapOptions, async (userinfo, done) => {
       });
     }
 
-    const appConfig = user?.tenantId
-      ? await resolveAppConfigForUser(getAppConfig, user)
-      : baseConfig;
-
-    if (!isEmailDomainAllowed(mail, appConfig?.registration?.allowedDomains)) {
-      logger.error(
-        `[LDAP Strategy] Authentication blocked - email domain not allowed [Email: ${mail}]`,
+    if (user?.ldapId && user.ldapId !== ldapId) {
+      logger.warn(
+        `[ldapStrategy] Rejected email fallback for ${user.email}: stored ldapId does not match authenticated LDAP identity`,
       );
-      return done(null, false, { message: 'Email domain not allowed' });
+      return done(null, false, { message: ErrorTypes.AUTH_FAILED });
     }
 
+    let appConfig = user?.tenantId ? await resolveAppConfigForUser(getAppConfig, user) : baseConfig;
+
     if (!user) {
+      const tenantId = getTenantId();
+      appConfig = await getAppConfig(tenantId ? { tenantId } : {});
+      if (!isEmailDomainAllowed(mail, appConfig?.registration?.allowedDomains)) {
+        logger.error(
+          `[LDAP Strategy] Registration blocked - email domain not allowed [Email: ${mail}]`,
+        );
+        return done(null, false, { message: 'Email domain not allowed' });
+      }
+
       const isFirstRegisteredUser = (await countUsers()) === 0;
       const role = isFirstRegisteredUser ? SystemRoles.ADMIN : SystemRoles.USER;
 

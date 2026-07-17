@@ -7,6 +7,7 @@ import type { LearnLightPersona } from 'librechat-data-provider';
 import { useChatContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
+import { pillButtonClassName } from './utils';
 
 const personaLabelKeys = {
   socratic: 'com_ui_persona_socratic',
@@ -58,10 +59,7 @@ export default function PersonaSelector() {
     <Ariakit.MenuButton
       aria-label={localize('com_ui_persona')}
       className={cn(
-        'group relative inline-flex items-center justify-center gap-1.5',
-        'rounded-full border border-border-medium text-sm font-medium',
-        'size-9 max-w-fit p-2 transition-all md:w-full md:p-3',
-        'bg-transparent shadow-sm hover:bg-surface-hover hover:shadow-md active:shadow-inner',
+        pillButtonClassName,
         persona != null && 'border-green-600/40 bg-green-500/10 hover:bg-green-700/10',
       )}
     >

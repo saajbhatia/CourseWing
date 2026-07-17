@@ -1,4 +1,4 @@
-const { logger } = require('@librechat/data-schemas');
+const { logger, getTenantId } = require('@librechat/data-schemas');
 const { ErrorTypes } = require('librechat-data-provider');
 const { isEnabled, isEmailDomainAllowed, resolveAppConfigForUser } = require('@librechat/api');
 const { createSocialUser, handleExistingUser } = require('./process');
@@ -31,25 +31,16 @@ const socialLogin =
         }
       }
 
-      const appConfig = existingUser?.tenantId
+      let appConfig = existingUser?.tenantId
         ? await resolveAppConfigForUser(getAppConfig, existingUser)
         : baseConfig;
-
-      /** Domain allowlist governs registration only; admin-created accounts always retain access */
-      if (!existingUser && !isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
-        logger.error(
-          `[${provider}Login] Authentication blocked - email domain not allowed [Email: ${email}]`,
-        );
-        const error = new Error(ErrorTypes.AUTH_FAILED);
-        error.code = ErrorTypes.AUTH_FAILED;
-        error.message = 'Email domain not allowed';
-        return cb(error);
-      }
 
       if (existingUser?.provider === provider) {
         await handleExistingUser(existingUser, avatarUrl, appConfig, email);
         return cb(null, existingUser);
-      } else if (existingUser) {
+      }
+
+      if (existingUser) {
         logger.info(
           `[${provider}Login] User ${email} already exists with provider ${existingUser.provider}`,
         );
@@ -64,6 +55,18 @@ const socialLogin =
           `[${provider}Login] Admin auth blocked - user does not exist [Email: ${email}]`,
         );
         return cb(null, false, { message: 'User does not exist' });
+      }
+
+      const tenantId = getTenantId();
+      appConfig = await getAppConfig(tenantId ? { tenantId } : {});
+      if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
+        logger.error(
+          `[${provider}Login] Registration blocked - email domain not allowed [Email: ${email}]`,
+        );
+        const error = new Error(ErrorTypes.AUTH_FAILED);
+        error.code = ErrorTypes.AUTH_FAILED;
+        error.message = 'Email domain not allowed';
+        return cb(error);
       }
 
       const ALLOW_SOCIAL_REGISTRATION = isEnabled(process.env.ALLOW_SOCIAL_REGISTRATION);

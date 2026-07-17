@@ -14,6 +14,7 @@ export type Conversation = {
 
 export type ConversationListParams = {
   cursor?: string;
+  canvasCourseId?: number;
   isArchived?: boolean;
   sortBy?: 'title' | 'createdAt' | 'updatedAt';
   sortDirection?: 'asc' | 'desc';

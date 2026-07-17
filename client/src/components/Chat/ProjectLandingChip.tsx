@@ -24,7 +24,7 @@ export default function ProjectLandingChip({ project }: { project: TChatProject 
     { staleTime: 30000 },
   );
   const projects = useMemo(
-    () => data?.pages.flatMap((page) => page?.projects ?? []) ?? [],
+    () => data?.pages.flatMap((page) => page.projects) ?? [],
     [data?.pages],
   );
   const items = useMemo<OptionWithIcon[]>(

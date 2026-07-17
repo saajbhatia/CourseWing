@@ -10,6 +10,7 @@ jest.mock('@librechat/data-schemas', () => ({
     error: jest.fn(),
   },
   hashToken: jest.fn().mockResolvedValue('hashed-token'),
+  getTenantId: jest.fn(() => undefined),
 }));
 jest.mock('~/models', () => ({
   findUser: jest.fn(),
@@ -66,7 +67,8 @@ const fetch = require('node-fetch');
 const { Strategy: SamlStrategy } = require('@node-saml/passport-saml');
 const { FileSources } = require('librechat-data-provider');
 const { findUser } = require('~/models');
-const { resolveAppConfigForUser } = require('@librechat/api');
+const { isEmailDomainAllowed, resolveAppConfigForUser } = require('@librechat/api');
+const { getTenantId } = require('@librechat/data-schemas');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
 const { getAppConfig } = require('~/server/services/Config');
 const { setupSaml, getCertificateContent } = require('./samlStrategy');
@@ -241,6 +243,10 @@ describe('setupSaml', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    isEmailDomainAllowed.mockReset().mockReturnValue(true);
+    resolveAppConfigForUser.mockReset().mockResolvedValue({});
+    getAppConfig.mockReset().mockResolvedValue({});
+    getTenantId.mockReset().mockReturnValue(undefined);
     // Reset so the mock captures the regular (non-admin) callback on next setupSaml() call
     verifyCallback = null;
 
@@ -426,6 +432,29 @@ u7wlOSk+oFzDIO/UILIA
     expect(user.email).toBe(baseProfile.email);
   });
 
+  it('allows an admin-created SAML account outside the registration allowlist', async () => {
+    const existingUser = {
+      _id: 'admin-created-user-id',
+      provider: 'saml',
+      email: baseProfile.email,
+      username: 'admin-created-user',
+      name: 'Admin-created User',
+    };
+    findUser.mockResolvedValueOnce(null).mockResolvedValueOnce(existingUser);
+    isEmailDomainAllowed.mockReturnValue(false);
+
+    const { user, details } = await validate({ ...baseProfile });
+
+    expect(details).toBeUndefined();
+    expect(user).toEqual(
+      expect.objectContaining({ _id: existingUser._id, samlId: baseProfile.nameID }),
+    );
+    expect(findUser).toHaveBeenNthCalledWith(1, { samlId: baseProfile.nameID });
+    expect(findUser).toHaveBeenNthCalledWith(2, { email: baseProfile.email });
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+    expect(require('~/models').createUser).not.toHaveBeenCalled();
+  });
+
   it('should block login when email exists with different provider', async () => {
     // Set up findUser to return a user with different provider
     const { findUser } = require('~/models');
@@ -506,7 +535,7 @@ u7wlOSk+oFzDIO/UILIA
 
   it('should save CloudFront SAML avatars under the shared avatar prefix', async () => {
     const { getStrategyFunctions } = require('~/server/services/Files/strategies');
-    getAppConfig.mockResolvedValueOnce({ fileStrategies: { avatar: FileSources.cloudfront } });
+    getAppConfig.mockResolvedValue({ fileStrategies: { avatar: FileSources.cloudfront } });
     const profile = { ...baseProfile };
 
     const { user } = await validate(profile);
@@ -558,16 +587,24 @@ u7wlOSk+oFzDIO/UILIA
     expect(resolveAppConfigForUser).toHaveBeenCalledWith(getAppConfig, existingUser);
   });
 
-  it('should use baseConfig for new SAML user without calling resolveAppConfigForUser', async () => {
+  it('should use merged config for a new SAML user without tenant-user resolution', async () => {
     const profile = { ...baseProfile };
     await validate(profile);
 
     expect(resolveAppConfigForUser).not.toHaveBeenCalled();
     expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
+    expect(getAppConfig).toHaveBeenCalledWith({});
   });
 
-  it('should block login when tenant config restricts the domain', async () => {
-    const { isEmailDomainAllowed } = require('@librechat/api');
+  it('uses the pre-auth tenant when resolving a new SAML registration policy', async () => {
+    getTenantId.mockReturnValue('tenant-new');
+
+    await validate({ ...baseProfile });
+
+    expect(getAppConfig).toHaveBeenCalledWith({ tenantId: 'tenant-new' });
+  });
+
+  it('allows an existing tenant SAML user when registration restricts the domain', async () => {
     const existingUser = {
       _id: 'tenant-blocked',
       provider: 'saml',
@@ -580,10 +617,28 @@ u7wlOSk+oFzDIO/UILIA
     resolveAppConfigForUser.mockResolvedValue({
       registration: { allowedDomains: ['other.com'] },
     });
-    isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    isEmailDomainAllowed.mockReturnValue(false);
 
     const profile = { ...baseProfile };
-    const { user } = await validate(profile);
+    const { user, details } = await validate(profile);
+    expect(user).toEqual(expect.objectContaining({ _id: existingUser._id }));
+    expect(details).toBeUndefined();
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+  });
+
+  it('blocks creation of a new SAML account outside the registration allowlist', async () => {
+    getAppConfig.mockImplementation(async (options) =>
+      options.baseOnly
+        ? { registration: { allowedDomains: ['yaml.example'] } }
+        : { registration: { allowedDomains: ['merged.example'] } },
+    );
+    isEmailDomainAllowed.mockReturnValue(false);
+
+    const { user, details } = await validate({ ...baseProfile });
+
     expect(user).toBe(false);
+    expect(details).toEqual({ message: 'Email domain not allowed' });
+    expect(isEmailDomainAllowed).toHaveBeenCalledWith(baseProfile.email, ['merged.example']);
+    expect(require('~/models').createUser).not.toHaveBeenCalled();
   });
 });

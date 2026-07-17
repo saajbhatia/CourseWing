@@ -1,5 +1,8 @@
+/* eslint-disable i18next/no-literal-string -- Static product marketing copy is intentionally authored here. */
 import { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { apiBaseUrl } from 'librechat-data-provider';
 import './LearnLightIntro.css';
 
 type Screen = {
@@ -10,33 +13,33 @@ type Screen = {
 
 const screens: Record<string, Screen> = {
   course: {
-    src: '/assets/learnlight/course-home.png',
+    src: `${apiBaseUrl()}/assets/learnlight/course-home.png`,
     alt: 'LearnLight AP Calculus course hub with an upcoming exam, personalized review, and course-aware study actions',
     caption:
       'The real LearnLight course hub — upcoming work, course chats, and review in one place.',
   },
   plan: {
-    src: '/assets/learnlight/finals-plan.png',
+    src: `${apiBaseUrl()}/assets/learnlight/finals-plan.png`,
     alt: 'A concrete finals plan with prioritized assignments and time boxes',
     caption: 'A real cross-course finals plan, broken into work a student can start tonight.',
   },
   review: {
-    src: '/assets/learnlight/review-session.png',
+    src: `${apiBaseUrl()}/assets/learnlight/review-session.png`,
     alt: 'A personalized calculus review generated from assignments, mastery data, and class materials',
     caption: 'A real review session built from the student’s class history and materials.',
   },
   sources: {
-    src: '/assets/learnlight/source-backed.png',
+    src: `${apiBaseUrl()}/assets/learnlight/source-backed.png`,
     alt: 'A calculus practice question with linked Canvas sources shown below the answer',
     caption: 'A real answer with the exact Canvas materials used shown underneath.',
   },
   memory: {
-    src: '/assets/learnlight/learning-memory.png',
+    src: `${apiBaseUrl()}/assets/learnlight/learning-memory.png`,
     alt: 'LearnLight memory controls showing student goals and struggle areas',
     caption: 'Students can see, edit, disable, or delete what the tutor remembers.',
   },
   persona: {
-    src: '/assets/learnlight/persona.png',
+    src: `${apiBaseUrl()}/assets/learnlight/persona.png`,
     alt: 'LearnLight tutor persona menu with classic, Socratic, direct, storyteller, and encouraging teaching styles',
     caption: 'The same coursework, explained in a teaching style that fits the learner.',
   },
@@ -104,9 +107,9 @@ export default function LearnLightIntro() {
           <a href="#stories">Real use cases</a>
           <a href="#adapts">Personalization</a>
         </nav>
-        <a className="ll-nav-cta" href="/login">
+        <Link className="ll-nav-cta" to="/login">
           Enter LearnLight <ArrowUpRight aria-hidden="true" />
-        </a>
+        </Link>
       </header>
 
       <section className="ll-hero" id="top">
@@ -123,9 +126,9 @@ export default function LearnLightIntro() {
             <a className="ll-button ll-button-primary" href="#stories">
               See it in action <ArrowRight aria-hidden="true" />
             </a>
-            <a className="ll-button ll-button-secondary" href="/login">
+            <Link className="ll-button ll-button-secondary" to="/login">
               Open LearnLight
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -271,9 +274,9 @@ export default function LearnLightIntro() {
         </div>
         <div>
           <p>A tutor that starts with the class, not a blank box.</p>
-          <a className="ll-button ll-button-light" href="/login">
+          <Link className="ll-button ll-button-light" to="/login">
             Enter LearnLight <ArrowUpRight aria-hidden="true" />
-          </a>
+          </Link>
         </div>
       </section>
 
@@ -287,7 +290,7 @@ export default function LearnLightIntro() {
         <p>The course-aware AI tutor.</p>
         <div>
           <a href="#stories">Use cases</a>
-          <a href="/login">Sign in</a>
+          <Link to="/login">Sign in</Link>
         </div>
       </footer>
 

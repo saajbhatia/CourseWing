@@ -1,9 +1,9 @@
-const { logger } = require('@librechat/data-schemas');
+const { logger, getTenantId } = require('@librechat/data-schemas');
 const { ErrorTypes } = require('librechat-data-provider');
 const { createSocialUser, handleExistingUser } = require('./process');
 const socialLogin = require('./socialLogin');
 const { findUser } = require('~/models');
-const { resolveAppConfigForUser } = require('@librechat/api');
+const { isEnabled, isEmailDomainAllowed, resolveAppConfigForUser } = require('@librechat/api');
 const { getAppConfig } = require('~/server/services/Config');
 
 jest.mock('@librechat/data-schemas', () => {
@@ -15,6 +15,7 @@ jest.mock('@librechat/data-schemas', () => {
       info: jest.fn(),
       warn: jest.fn(),
     },
+    getTenantId: jest.fn(() => undefined),
   };
 });
 
@@ -56,6 +57,17 @@ describe('socialLogin', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    isEnabled.mockReset().mockReturnValue(true);
+    isEmailDomainAllowed.mockReset().mockReturnValue(true);
+    resolveAppConfigForUser.mockReset().mockResolvedValue({
+      fileStrategy: 'local',
+      balance: { enabled: false },
+    });
+    getAppConfig.mockReset().mockResolvedValue({
+      fileStrategy: 'local',
+      balance: { enabled: false },
+    });
+    getTenantId.mockReset().mockReturnValue(undefined);
   });
 
   describe('Finding users by provider ID', () => {
@@ -292,7 +304,7 @@ describe('socialLogin', () => {
       expect(resolveAppConfigForUser).toHaveBeenCalledWith(getAppConfig, existingUser);
     });
 
-    it('should use baseConfig for non-tenant user without calling resolveAppConfigForUser', async () => {
+    it('should use merged config for a new user without tenant-user resolution', async () => {
       const provider = 'google';
       const googleId = 'google-new-tenant';
       const email = 'new@example.com';
@@ -319,10 +331,33 @@ describe('socialLogin', () => {
 
       expect(resolveAppConfigForUser).not.toHaveBeenCalled();
       expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
+      expect(getAppConfig).toHaveBeenCalledWith({});
+    });
+
+    it('uses the pre-auth tenant when resolving a new social registration policy', async () => {
+      const provider = 'google';
+      const email = 'new@example.com';
+      findUser.mockResolvedValue(null);
+      createSocialUser.mockResolvedValue({ _id: 'new-user', email, provider });
+      getTenantId.mockReturnValue('tenant-new');
+
+      const loginFn = socialLogin(provider, mockGetProfileDetails);
+      await loginFn(
+        null,
+        null,
+        null,
+        {
+          id: 'google-new-tenant',
+          emails: [{ value: email, verified: true }],
+          name: { givenName: 'New', familyName: 'User' },
+        },
+        jest.fn(),
+      );
+
+      expect(getAppConfig).toHaveBeenCalledWith({ tenantId: 'tenant-new' });
     });
 
     it('should allow existing-user login even when tenant config restricts the domain', async () => {
-      const { isEmailDomainAllowed } = require('@librechat/api');
       const provider = 'google';
       const googleId = 'google-tenant-blocked';
       const email = 'blocked@example.com';
@@ -355,14 +390,19 @@ describe('socialLogin', () => {
       await loginFn(null, null, null, mockProfile, callback);
 
       expect(callback).toHaveBeenCalledWith(null, existingUser);
+      expect(isEmailDomainAllowed).not.toHaveBeenCalled();
     });
 
     it('should block new-user registration when the domain is not allowed', async () => {
-      const { isEmailDomainAllowed } = require('@librechat/api');
       const provider = 'google';
       const email = 'newuser@notallowed.com';
 
       findUser.mockResolvedValue(null);
+      getAppConfig.mockImplementation(async (options) =>
+        options.baseOnly
+          ? { registration: { allowedDomains: ['yaml.example'] } }
+          : { registration: { allowedDomains: ['merged.example'] } },
+      );
       isEmailDomainAllowed.mockReturnValue(false);
 
       const mockProfile = {
@@ -380,6 +420,33 @@ describe('socialLogin', () => {
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Email domain not allowed' }),
       );
+      expect(isEmailDomainAllowed).toHaveBeenCalledWith(email, ['merged.example']);
+      expect(createSocialUser).not.toHaveBeenCalled();
+    });
+
+    it('does not apply registration restrictions to an admin existing-users-only lookup', async () => {
+      const provider = 'google';
+      const email = 'missing@blocked.example';
+      findUser.mockResolvedValue(null);
+      isEmailDomainAllowed.mockReturnValue(false);
+
+      const loginFn = socialLogin(provider, mockGetProfileDetails, { existingUsersOnly: true });
+      const callback = jest.fn();
+      await loginFn(
+        null,
+        null,
+        null,
+        {
+          id: 'missing-user',
+          emails: [{ value: email, verified: true }],
+          name: { givenName: 'Missing', familyName: 'User' },
+        },
+        callback,
+      );
+
+      expect(callback).toHaveBeenCalledWith(null, false, { message: 'User does not exist' });
+      expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+      expect(getAppConfig).not.toHaveBeenCalledWith({});
     });
   });
 });

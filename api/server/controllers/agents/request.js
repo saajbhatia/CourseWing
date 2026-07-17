@@ -71,11 +71,19 @@ async function resolveConversationCreatedAt({ userId, conversationId, isNewConvo
 
 async function attachConversationCreatedAt(req, { userId, conversationId, isNewConvo }) {
   req.body.conversationId = conversationId;
-  const resolved = await resolveConversationCreatedAt({
-    userId,
-    conversationId,
-    isNewConvo,
-  });
+  const hasResolvedConversation =
+    !isNewConvo && Object.prototype.hasOwnProperty.call(req, 'resolvedConversation');
+  const resolved = hasResolvedConversation
+    ? {
+        conversation: req.resolvedConversation,
+        createdAt:
+          toValidISOString(req.resolvedConversation?.createdAt) ?? new Date().toISOString(),
+      }
+    : await resolveConversationCreatedAt({
+        userId,
+        conversationId,
+        isNewConvo,
+      });
   req.conversationCreatedAt = resolved.createdAt;
   if (!isNewConvo && resolved.conversation !== undefined) {
     req.resolvedConversation = resolved.conversation ?? null;

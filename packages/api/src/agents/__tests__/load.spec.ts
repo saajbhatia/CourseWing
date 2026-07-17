@@ -11,12 +11,14 @@ import type {
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import type { LoadAgentParams, LoadAgentDeps } from '../load';
+import { learnLightToolKeys } from '../../learnlight';
 import { loadAddedAgent } from '../added';
 import { loadAgent } from '../load';
 
 let Agent: mongoose.Model<unknown>;
 let createAgent: ReturnType<typeof createMethods>['createAgent'];
 let getAgent: ReturnType<typeof createMethods>['getAgent'];
+let previousLearnLightEnabled: string | undefined;
 
 const mockGetMCPServerTools = jest.fn();
 
@@ -44,8 +46,18 @@ describe('loadAgent', () => {
   });
 
   beforeEach(async () => {
+    previousLearnLightEnabled = process.env.LEARNLIGHT_ENABLED;
+    process.env.LEARNLIGHT_ENABLED = 'false';
     await Agent.deleteMany({});
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    if (previousLearnLightEnabled == null) {
+      delete process.env.LEARNLIGHT_ENABLED;
+      return;
+    }
+    process.env.LEARNLIGHT_ENABLED = previousLearnLightEnabled;
   });
 
   test('should return null when agent_id is not provided', async () => {
@@ -212,6 +224,147 @@ describe('loadAgent', () => {
     expect(result!.name).toBe('Test Agent');
     expect(String(result!.author)).toBe(userId.toString());
     expect(result!.version).toBe(1);
+  });
+
+  test('should apply LearnLight course instructions and tools to a persistent agent', async () => {
+    process.env.LEARNLIGHT_ENABLED = 'true';
+    const userId = new mongoose.Types.ObjectId();
+    const agentId = `agent_${uuidv4()}`;
+    const promptPrefix = [
+      'Current Canvas course: Test Course',
+      'Canvas course ID: 42',
+      '[LearnLight tutor — set for this conversation]',
+      'Enriched learning policy.',
+      '[LearnLight course context — synced from Canvas, refreshed automatically]',
+      'Course: Test Course — Canvas course ID: 42',
+    ].join('\n');
+
+    await createAgent({
+      id: agentId,
+      name: 'Course Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: userId,
+      instructions: 'Saved agent instructions.',
+      tools: ['web_search', learnLightToolKeys[0]],
+    });
+
+    const result = await loadAgent(
+      {
+        req: { user: { id: userId.toString() }, body: { promptPrefix } },
+        agent_id: agentId,
+        endpoint: 'agents',
+        applyLearnLightCourseContext: true,
+      },
+      deps,
+    );
+
+    expect(result?.instructions).toBe(`Saved agent instructions.\n\n${promptPrefix}`);
+    expect(result?.tools).toEqual(['web_search', ...learnLightToolKeys]);
+
+    const storedAgent = await getAgent({ id: agentId });
+    expect(storedAgent?.instructions).toBe('Saved agent instructions.');
+    expect(storedAgent?.tools).toEqual(['web_search', learnLightToolKeys[0]]);
+  });
+
+  test('should not grant LearnLight tools to a persistent non-course chat', async () => {
+    process.env.LEARNLIGHT_ENABLED = 'true';
+    const userId = new mongoose.Types.ObjectId();
+    const agentId = `agent_${uuidv4()}`;
+
+    await createAgent({
+      id: agentId,
+      name: 'General Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: userId,
+      instructions: 'Saved agent instructions.',
+      tools: ['web_search'],
+    });
+
+    const result = await loadAgent(
+      {
+        req: {
+          user: { id: userId.toString() },
+          body: {
+            promptPrefix:
+              'General chat prefix.\n\n[LearnLight tutor — set for this conversation]\nEnriched learning policy.',
+          },
+        },
+        agent_id: agentId,
+        endpoint: 'agents',
+        applyLearnLightCourseContext: true,
+      },
+      deps,
+    );
+
+    expect(result?.instructions).toBe('Saved agent instructions.');
+    expect(result?.tools).toEqual(['web_search']);
+  });
+
+  test('should not overlay a persistent course agent when LearnLight is disabled', async () => {
+    const userId = new mongoose.Types.ObjectId();
+    const agentId = `agent_${uuidv4()}`;
+
+    await createAgent({
+      id: agentId,
+      name: 'Disabled LearnLight Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: userId,
+      instructions: 'Saved agent instructions.',
+      tools: ['web_search', learnLightToolKeys[0]],
+    });
+
+    const result = await loadAgent(
+      {
+        req: {
+          user: { id: userId.toString() },
+          body: { promptPrefix: 'Current Canvas course: Test\nCanvas course ID: 42' },
+        },
+        agent_id: agentId,
+        endpoint: 'agents',
+        applyLearnLightCourseContext: true,
+      },
+      deps,
+    );
+
+    expect(result?.instructions).toBe('Saved agent instructions.');
+    expect(result?.tools).toEqual(['web_search']);
+
+    const storedAgent = await getAgent({ id: agentId });
+    expect(storedAgent?.tools).toEqual(['web_search', learnLightToolKeys[0]]);
+  });
+
+  test('should not overlay a non-primary persistent agent from the same course request', async () => {
+    process.env.LEARNLIGHT_ENABLED = 'true';
+    const userId = new mongoose.Types.ObjectId();
+    const agentId = `agent_${uuidv4()}`;
+
+    await createAgent({
+      id: agentId,
+      name: 'Internal Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: userId,
+      instructions: 'Internal agent instructions.',
+      tools: ['web_search'],
+    });
+
+    const result = await loadAgent(
+      {
+        req: {
+          user: { id: userId.toString() },
+          body: { promptPrefix: 'Current Canvas course: Test\nCanvas course ID: 42' },
+        },
+        agent_id: agentId,
+        endpoint: 'agents',
+      },
+      deps,
+    );
+
+    expect(result?.instructions).toBe('Internal agent instructions.');
+    expect(result?.tools).toEqual(['web_search']);
   });
 
   test('should return agent even when user is not author (permissions checked at route level)', async () => {

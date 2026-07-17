@@ -2,6 +2,7 @@ const { Constants, ForkOptions } = require('librechat-data-provider');
 
 jest.mock('~/models', () => ({
   getConvo: jest.fn(),
+  copyConvoCanvasScope: jest.fn(),
   bulkSaveConvos: jest.fn(),
   getMessages: jest.fn(),
   bulkSaveMessages: jest.fn(),
@@ -38,6 +39,7 @@ const {
 } = require('./fork');
 const {
   bulkIncrementTagCounts,
+  copyConvoCanvasScope,
   getConvo,
   bulkSaveConvos,
   getMessages,
@@ -102,6 +104,7 @@ describe('forkConversation', () => {
     jest.clearAllMocks();
     mockIdCounter = 0;
     getConvo.mockResolvedValue(mockConversation);
+    copyConvoCanvasScope.mockResolvedValue(false);
     getMessages.mockResolvedValue(mockMessages);
     bulkSaveConvos.mockResolvedValue(null);
     bulkSaveMessages.mockResolvedValue(null);
@@ -251,6 +254,26 @@ describe('forkConversation', () => {
     // bulkIncrementTagCounts will be called with empty array
     expect(bulkIncrementTagCounts).toHaveBeenCalledWith('user1', []);
   });
+
+  test('should copy the immutable Canvas course and account scope when forking', async () => {
+    copyConvoCanvasScope.mockResolvedValue(true);
+
+    const result = await forkConversation({
+      originalConvoId: 'abc123',
+      targetMessageId: '3',
+      requestUserId: 'user1',
+      option: ForkOptions.DIRECT_PATH,
+    });
+
+    expect(copyConvoCanvasScope).toHaveBeenCalledWith(
+      'user1',
+      'abc123',
+      result.conversation.conversationId,
+    );
+    expect(bulkSaveConvos.mock.invocationCallOrder[0]).toBeLessThan(
+      copyConvoCanvasScope.mock.invocationCallOrder[0],
+    );
+  });
 });
 
 describe('duplicateConversation', () => {
@@ -258,6 +281,7 @@ describe('duplicateConversation', () => {
     jest.clearAllMocks();
     mockIdCounter = 0;
     getConvo.mockResolvedValue(mockConversation);
+    copyConvoCanvasScope.mockResolvedValue(false);
     getMessages.mockResolvedValue(mockMessages);
     bulkSaveConvos.mockResolvedValue(null);
     bulkSaveMessages.mockResolvedValue(null);
@@ -310,6 +334,20 @@ describe('duplicateConversation', () => {
 
     // bulkIncrementTagCounts will be called with empty array
     expect(bulkIncrementTagCounts).toHaveBeenCalledWith('user1', []);
+  });
+
+  test('should copy the immutable Canvas course and account scope when duplicating', async () => {
+    copyConvoCanvasScope.mockResolvedValue(true);
+
+    await duplicateConversation({
+      userId: 'user1',
+      conversationId: 'abc123',
+    });
+
+    expect(copyConvoCanvasScope).toHaveBeenCalledWith('user1', 'abc123', expect.any(String));
+    expect(bulkSaveConvos.mock.invocationCallOrder[0]).toBeLessThan(
+      copyConvoCanvasScope.mock.invocationCallOrder[0],
+    );
   });
 });
 
@@ -386,6 +424,7 @@ describe('forkSharedConversation', () => {
     });
 
     expect(getConvo).toHaveBeenCalledWith('user1', savedConvos[0].conversationId);
+    expect(copyConvoCanvasScope).not.toHaveBeenCalled();
     expect(result).toMatchObject({ conversation: mockConversation, messages: mockSharedMessages });
   });
 

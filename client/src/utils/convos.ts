@@ -171,6 +171,14 @@ function conversationMatchesProjectQuery(
   return conversation.chatProjectId === projectId;
 }
 
+function isCanvasCourseConversationQuery(queryKey: readonly unknown[]): boolean {
+  const params = queryKey[1];
+  if (!params || typeof params !== 'object') {
+    return false;
+  }
+  return (params as { canvasCourseId?: unknown }).canvasCourseId != null;
+}
+
 /**
  * Reads the project id from the current URL's `?projectId` param — the source of
  * truth for a new chat's project scope (the conversation atom can lag behind it).
@@ -249,7 +257,10 @@ export function addConversationToAllConversationsQueries(
     .findAll([QueryKeys.allConversations], { exact: false });
 
   for (const query of queries) {
-    if (!conversationMatchesProjectQuery(query.queryKey, newConversation)) {
+    if (
+      isCanvasCourseConversationQuery(query.queryKey) ||
+      !conversationMatchesProjectQuery(query.queryKey, newConversation)
+    ) {
       continue;
     }
     queryClient.setQueryData<InfiniteData<ConversationCursorData>>(query.queryKey, (old) => {
@@ -366,7 +377,10 @@ export function addConvoToAllQueries(queryClient: QueryClient, newConvo: TConver
     .findAll([QueryKeys.allConversations], { exact: false });
 
   for (const query of queries) {
-    if (!conversationMatchesProjectQuery(query.queryKey, newConvo)) {
+    if (
+      isCanvasCourseConversationQuery(query.queryKey) ||
+      !conversationMatchesProjectQuery(query.queryKey, newConvo)
+    ) {
       continue;
     }
     queryClient.setQueryData<InfiniteData<ConversationCursorData>>(query.queryKey, (oldData) => {
@@ -428,7 +442,10 @@ export function upsertConvoInAllQueries(
 
       const now = new Date().toISOString();
       if (pageIdx === -1) {
-        if (!conversationMatchesProjectQuery(query.queryKey, nextConvo)) {
+        if (
+          isCanvasCourseConversationQuery(query.queryKey) ||
+          !conversationMatchesProjectQuery(query.queryKey, nextConvo)
+        ) {
           return oldData;
         }
         const firstPage = oldData.pages[0] ?? { conversations: [], nextCursor: null };

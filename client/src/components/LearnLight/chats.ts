@@ -17,6 +17,14 @@ export function recordCourseChat(conversationId: string, canvasCourseId: number)
   window.dispatchEvent(new Event(MAP_EVENT));
 }
 
+export function clearCourseChatMap(): void {
+  if (Object.keys(overlay).length === 0) {
+    return;
+  }
+  overlay = {};
+  window.dispatchEvent(new Event(MAP_EVENT));
+}
+
 function getOverlay(): CourseChatMap {
   return overlay;
 }

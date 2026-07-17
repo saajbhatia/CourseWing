@@ -6,6 +6,7 @@ jest.mock('@librechat/data-schemas', () => ({
     debug: jest.fn(),
     error: jest.fn(),
   },
+  getTenantId: jest.fn(() => undefined),
 }));
 
 jest.mock('@librechat/api', () => ({
@@ -37,6 +38,7 @@ jest.mock('passport-ldapauth', () => {
 
 const { ErrorTypes } = require('librechat-data-provider');
 const { isEmailDomainAllowed, resolveAppConfigForUser } = require('@librechat/api');
+const { getTenantId } = require('@librechat/data-schemas');
 const { findUser, createUser, updateUser, countUsers } = require('~/models');
 const { getAppConfig } = require('~/server/services/Config');
 
@@ -72,6 +74,9 @@ describe('ldapStrategy', () => {
     updateUser.mockReset().mockImplementation(async (id, user) => ({ _id: id, ...user }));
     countUsers.mockReset().mockResolvedValue(0);
     isEmailDomainAllowed.mockReset().mockReturnValue(true);
+    resolveAppConfigForUser.mockReset().mockResolvedValue({});
+    getAppConfig.mockReset().mockResolvedValue({});
+    getTenantId.mockReset().mockReturnValue(undefined);
 
     // Ensure requiring the strategy sets up the verify callback
     jest.isolateModules(() => {
@@ -167,7 +172,7 @@ describe('ldapStrategy', () => {
     expect(user.email).toBe('John@ldap.local');
   });
 
-  it('denies login if email domain is not allowed', async () => {
+  it('blocks creation of a new LDAP account when the email domain is not allowed', async () => {
     isEmailDomainAllowed.mockReturnValue(false);
 
     const userinfo = {
@@ -180,6 +185,55 @@ describe('ldapStrategy', () => {
     const { user, info } = await callVerify(userinfo);
     expect(user).toBe(false);
     expect(info).toEqual({ message: 'Email domain not allowed' });
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('allows an admin-created LDAP account outside the registration allowlist', async () => {
+    const existing = {
+      _id: 'admin-created-user',
+      provider: 'ldap',
+      email: 'existing@blocked.com',
+      username: 'existing',
+      name: 'Existing User',
+    };
+    findUser.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+    isEmailDomainAllowed.mockReturnValue(false);
+
+    const userinfo = {
+      uid: 'directory-id',
+      mail: existing.email,
+      givenName: 'Existing',
+      cn: 'Existing User',
+    };
+
+    const { user, info } = await callVerify(userinfo);
+
+    expect(info).toBeUndefined();
+    expect(user).toEqual(expect.objectContaining({ _id: existing._id, ldapId: 'directory-id' }));
+    expect(findUser).toHaveBeenNthCalledWith(1, { ldapId: 'directory-id' });
+    expect(findUser).toHaveBeenNthCalledWith(2, { email: existing.email });
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects email fallback when the stored LDAP identity belongs to a different subject', async () => {
+    findUser.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      _id: 'existing-user',
+      provider: 'ldap',
+      email: 'existing@example.com',
+      ldapId: 'different-directory-id',
+    });
+
+    const { user, info } = await callVerify({
+      uid: 'authenticated-directory-id',
+      mail: 'existing@example.com',
+      givenName: 'Existing',
+      cn: 'Existing User',
+    });
+
+    expect(user).toBe(false);
+    expect(info).toEqual({ message: ErrorTypes.AUTH_FAILED });
+    expect(updateUser).not.toHaveBeenCalled();
   });
 
   it('passes getAppConfig and found user to resolveAppConfigForUser', async () => {
@@ -207,7 +261,7 @@ describe('ldapStrategy', () => {
     expect(resolveAppConfigForUser).toHaveBeenCalledWith(getAppConfig, existing);
   });
 
-  it('uses baseConfig for new user without calling resolveAppConfigForUser', async () => {
+  it('uses merged config for new user without calling resolveAppConfigForUser', async () => {
     findUser.mockResolvedValue(null);
 
     const userinfo = {
@@ -221,9 +275,23 @@ describe('ldapStrategy', () => {
 
     expect(resolveAppConfigForUser).not.toHaveBeenCalled();
     expect(getAppConfig).toHaveBeenCalledWith({ baseOnly: true });
+    expect(getAppConfig).toHaveBeenCalledWith({});
   });
 
-  it('should block login when tenant config restricts the domain', async () => {
+  it('uses the pre-auth tenant when resolving a new LDAP registration policy', async () => {
+    getTenantId.mockReturnValue('tenant-new');
+
+    await callVerify({
+      uid: 'uid-new',
+      mail: 'newuser@example.com',
+      givenName: 'New',
+      cn: 'New User',
+    });
+
+    expect(getAppConfig).toHaveBeenCalledWith({ tenantId: 'tenant-new' });
+  });
+
+  it('allows an existing tenant LDAP user when registration restricts the domain', async () => {
     const existing = {
       _id: 'u-blocked',
       provider: 'ldap',
@@ -235,12 +303,36 @@ describe('ldapStrategy', () => {
     resolveAppConfigForUser.mockResolvedValue({
       registration: { allowedDomains: ['other.com'] },
     });
-    isEmailDomainAllowed.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    isEmailDomainAllowed.mockReturnValue(false);
 
     const userinfo = { uid: 'uid-tenant', mail: 'user@example.com', givenName: 'Test', cn: 'Test' };
     const { user, info } = await callVerify(userinfo);
 
+    expect(user).toEqual(expect.objectContaining({ _id: existing._id }));
+    expect(info).toBeUndefined();
+    expect(isEmailDomainAllowed).not.toHaveBeenCalled();
+  });
+
+  it('applies the merged registration allowlist when creating a new LDAP user', async () => {
+    getAppConfig.mockImplementation(async (options) =>
+      options.baseOnly
+        ? { registration: { allowedDomains: ['yaml.example'] } }
+        : { registration: { allowedDomains: ['merged.example'] } },
+    );
+    isEmailDomainAllowed.mockReturnValue(false);
+
+    const { user, info } = await callVerify({
+      uid: 'uid-new',
+      mail: 'newuser@blocked.example',
+      givenName: 'New',
+      cn: 'New User',
+    });
+
     expect(user).toBe(false);
     expect(info).toEqual({ message: 'Email domain not allowed' });
+    expect(isEmailDomainAllowed).toHaveBeenCalledWith('newuser@blocked.example', [
+      'merged.example',
+    ]);
+    expect(createUser).not.toHaveBeenCalled();
   });
 });

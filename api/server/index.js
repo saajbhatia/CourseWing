@@ -39,7 +39,7 @@ const {
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
 const createValidateImageRequest = require('./middleware/validateImageRequest');
-const { backfillCourseChats } = require('./services/LearnLight');
+const { backfillCourseChats, purgeLegacyCanvasTokens } = require('./services/LearnLight');
 const { startExpiredFileSweep } = require('./services/Files/process');
 const { initializeGitHubSkillSync } = require('./services/Skills/sync');
 const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
@@ -126,6 +126,9 @@ const startServer = async () => {
       logger.error('[backfillCourseChats] Background backfill failed:', err);
     });
   }
+  runAsSystem(purgeLegacyCanvasTokens).catch((err) => {
+    logger.error('[purgeLegacyCanvasTokens] Legacy Canvas token cleanup failed:', err);
+  });
   const appConfig = await getAppConfig({ baseOnly: true });
   initializeFileStorage(appConfig);
   await initializeDeploymentSkills({ projectRoot: path.resolve(__dirname, '../..') });
@@ -264,9 +267,9 @@ const startServer = async () => {
   app.use('/api/prompts', routes.prompts);
   app.use('/api/skills', routes.skills);
   app.use('/api/categories', routes.categories);
-  app.use('/api/endpoints', routes.endpoints);
+  app.use('/api/endpoints', preAuthTenantMiddleware, routes.endpoints);
   app.use('/api/balance', routes.balance);
-  app.use('/api/models', routes.models);
+  app.use('/api/models', preAuthTenantMiddleware, routes.models);
   app.use('/api/config', preAuthTenantMiddleware, optionalJwtAuth, routes.config);
   app.use('/api/assistants', routes.assistants);
   app.use('/api/files', await routes.files.initialize());

@@ -25,8 +25,10 @@ export type ServerRequest = Request<unknown, unknown, RequestBody> & {
   config?: AppConfig;
   /** Server-captured conversation creation time used to anchor dynamic prompt variables. */
   conversationCreatedAt?: string;
-  /** Conversation loaded while resolving the prompt timestamp anchor, reused by save logic. */
+  /** Trusted conversation loaded by request middleware/controller and reused by save logic. */
   resolvedConversation?: Partial<TConversation> | null;
+  /** Verified internal Canvas account scope attached only to LearnLight course requests. */
+  learnLightCanvasAccountKey?: string;
   /** Passport strategy that populated req.user for this request. */
   authStrategy?: string;
 };

@@ -11,6 +11,7 @@ import {
   Folder,
   FolderPlus,
   Folders,
+  LogIn,
   Pencil,
   Trash2,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import {
   NewChatIcon,
   useToastContext,
 } from '@librechat/client';
+import { buildLoginRedirectUrl } from 'librechat-data-provider';
 import type { TChatProject, TConversation } from 'librechat-data-provider';
 import type { MenuItemProps } from '~/common';
 import {
@@ -426,10 +428,7 @@ const ProjectsSection = ({ toggleNav, isAuthenticated }: ProjectsSectionProps) =
     { enabled: isAuthenticated, staleTime: 30000, cacheTime: 300000 },
   );
 
-  const projects = useMemo(
-    () => data?.pages.flatMap((page) => page?.projects ?? []) ?? [],
-    [data?.pages],
-  );
+  const projects = useMemo(() => data?.pages.flatMap((page) => page.projects) ?? [], [data?.pages]);
   const hasMore = (data?.pages[data.pages.length - 1]?.nextCursor ?? null) != null;
 
   /**
@@ -442,6 +441,11 @@ const ProjectsSection = ({ toggleNav, isAuthenticated }: ProjectsSectionProps) =
 
   const openProjects = useCallback(() => {
     navigate('/projects');
+    toggleNav();
+  }, [navigate, toggleNav]);
+
+  const signInToProjects = useCallback(() => {
+    navigate(buildLoginRedirectUrl('/projects', '', ''));
     toggleNav();
   }, [navigate, toggleNav]);
 
@@ -493,7 +497,28 @@ const ProjectsSection = ({ toggleNav, isAuthenticated }: ProjectsSectionProps) =
   };
 
   if (!isAuthenticated) {
-    return null;
+    return (
+      <div className="flex flex-col px-3 text-sm">
+        <div className="flex h-8 w-full items-center gap-0.5 pr-2">
+          <button
+            type="button"
+            onClick={signInToProjects}
+            className="group flex min-w-0 flex-1 items-center gap-1 rounded-lg px-1 py-2 text-xs font-bold text-text-secondary outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white"
+          >
+            <span className="select-none truncate">{localize('com_ui_projects')}</span>
+          </button>
+          <Folders className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
+        </div>
+        <button
+          type="button"
+          onClick={signInToProjects}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white"
+        >
+          <LogIn className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{localize('com_ui_projects_sign_in')}</span>
+        </button>
+      </div>
+    );
   }
 
   return (

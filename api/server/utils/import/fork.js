@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { logger, tenantStorage } = require('@librechat/data-schemas');
 const { EModelEndpoint, Constants, ForkOptions } = require('librechat-data-provider');
-const { getConvo, getMessages, getSharedMessages } = require('~/models');
+const { getConvo, getMessages, getSharedMessages, copyConvoCanvasScope } = require('~/models');
 const { createImportBatchBuilder } = require('./importBatchBuilder');
 const { getAppConfig } = require('~/server/services/Config');
 const { resolveImportDefaultEndpoint } = require('./defaults');
@@ -137,6 +137,7 @@ async function forkConversation({
       originalConvo,
     );
     await importBatchBuilder.saveBatch();
+    await copyConvoCanvasScope(requestUserId, originalConvoId, result.conversation.conversationId);
     logger.debug(
       `user: ${requestUserId} | New conversation "${
         newTitle || originalConvo.title
@@ -526,6 +527,7 @@ async function duplicateConversation({ userId, conversationId, title }) {
   const duplicateTitle = title || originalConvo.title;
   const result = importBatchBuilder.finishConversation(duplicateTitle, new Date(), originalConvo);
   await importBatchBuilder.saveBatch();
+  await copyConvoCanvasScope(userId, conversationId, result.conversation.conversationId);
   logger.debug(
     `user: ${userId} | New conversation "${duplicateTitle}" duplicated from conversation ID ${conversationId}`,
   );

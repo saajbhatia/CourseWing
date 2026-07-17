@@ -1,5 +1,6 @@
 import {
   parseConvo,
+  extractCanvasCourseId,
   EModelEndpoint,
   isAgentsEndpoint,
   isEphemeralAgentId,
@@ -60,6 +61,17 @@ const buildDefaultConvo = ({
     endpointType,
     endpoint,
   };
+
+  /** Request-scoped context (for example a Canvas course marker) must win over a
+   * parsed preset's nullable promptPrefix. Agent presets normalize an omitted
+   * prefix to null, which otherwise erases the explicit conversation template. */
+  if (extractCanvasCourseId(conversation.promptPrefix) != null) {
+    defaultConvo.promptPrefix = conversation.promptPrefix;
+  } else if (typeof lastConversationSetup?.promptPrefix === 'string') {
+    // Agent parsing omits promptPrefix, but an explicit saved preset prefix should
+    // still replace an ordinary request prefix.
+    defaultConvo.promptPrefix = lastConversationSetup.promptPrefix;
+  }
 
   // Ensures assistant_id is always defined
   const assistantId = convo?.assistant_id ?? conversation?.assistant_id ?? '';

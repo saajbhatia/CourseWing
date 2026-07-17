@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MessageCircle, Plus } from 'lucide-react';
-import { getConversationCourseId } from 'librechat-data-provider';
+import { useToastContext } from '@librechat/client';
 import type { TConversation } from 'librechat-data-provider';
+import { useConversationsInfiniteQuery } from '~/data-provider';
 import { useCurrentCoursesQuery } from '~/data-provider/LearnLight';
 import {
   getDisplayCourseName,
@@ -19,6 +20,7 @@ import { cn } from '~/utils';
 
 type CoursePanelProps = {
   canvasCourseId: number;
+  canvasAccountKey: string;
   conversations: Array<TConversation | null>;
   toggleNav: () => void;
 };
@@ -34,27 +36,44 @@ function getChatDateLabel(conversation: TConversation): string | null {
 
 export default function CoursePanel({
   canvasCourseId,
+  canvasAccountKey,
   conversations,
   toggleNav,
 }: CoursePanelProps) {
   const localize = useLocalize();
+  const { showToast } = useToastContext();
   const navigate = useNavigate();
   const { newConversation } = useNewConvo();
   const { conversationId } = useParams();
   const chatMap = useCourseChatMap();
   const { data: currentCourses = [] } = useCurrentCoursesQuery();
+  const {
+    data: courseChatData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useConversationsInfiniteQuery(
+    { canvasCourseId },
+    { staleTime: 30000, cacheTime: 300000 },
+    canvasAccountKey,
+  );
   const course = currentCourses.find((item) => item.canvasCourseId === canvasCourseId);
 
-  const courseChats = useMemo(
-    () =>
-      conversations.filter(
-        (conversation): conversation is TConversation =>
-          conversation?.conversationId != null &&
-          (chatMap[conversation.conversationId] ?? getConversationCourseId(conversation)) ===
-            canvasCourseId,
-      ),
-    [conversations, chatMap, canvasCourseId],
-  );
+  const courseChats = useMemo(() => {
+    const fetched = courseChatData?.pages.flatMap((page) => page.conversations) ?? [];
+    const optimistic = conversations.filter(
+      (conversation) =>
+        conversation?.conversationId != null &&
+        chatMap[conversation.conversationId] === canvasCourseId,
+    );
+    const seen = new Set<string>();
+    return [...fetched, ...optimistic].filter(
+      (conversation): conversation is TConversation =>
+        conversation?.conversationId != null &&
+        !seen.has(conversation.conversationId) &&
+        Boolean(seen.add(conversation.conversationId)),
+    );
+  }, [courseChatData, conversations, chatMap, canvasCourseId]);
 
   const goHome = () => {
     clearPendingCourse();
@@ -69,11 +88,18 @@ export default function CoursePanel({
 
   const startChat = () => {
     if (course != null) {
-      openCourseChat(navigate, newConversation, course, {
+      const opened = openCourseChat(navigate, newConversation, course, {
         promptPrefix: getCoursePrefix(course),
         greeting: localize('com_ui_course_chat_greeting'),
       });
-      toggleNav();
+      if (opened) {
+        toggleNav();
+      } else {
+        showToast({
+          status: 'error',
+          message: localize('com_ui_guest_handoff_error'),
+        });
+      }
     }
   };
 
@@ -162,6 +188,16 @@ export default function CoursePanel({
               );
             })}
           </ul>
+        )}
+        {hasNextPage && (
+          <button
+            type="button"
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+            className="mt-1 w-full rounded-lg px-2 py-2 text-center text-xs font-medium text-text-secondary transition-colors hover:bg-surface-active-alt hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+          >
+            {localize('com_ui_load_more')}
+          </button>
         )}
       </div>
     </div>

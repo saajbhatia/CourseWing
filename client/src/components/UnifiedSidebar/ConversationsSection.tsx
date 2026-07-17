@@ -30,12 +30,14 @@ import { recordCourseChat, useCourseChatMap } from '~/components/LearnLight/chat
 import {
   useConversationsInfiniteQuery,
   useGetConvoIdQuery,
+  useGetStartupConfig,
   useTitleGeneration,
 } from '~/data-provider';
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
 import CoursePanel from '~/components/LearnLight/CoursePanel';
+import { useCanvasConnectionQuery } from '~/data-provider/LearnLight';
 import { Conversations } from '~/components/Conversations';
 import Convo from '~/components/Conversations/Convo';
 import SearchBar from '~/components/Nav/SearchBar';
@@ -53,6 +55,8 @@ const ConversationsSection = memo(() => {
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const setSidebarExpanded = useSetRecoilState(store.sidebarExpanded);
   const { isAuthenticated } = useAuthContext();
+  const { data: startupConfig } = useGetStartupConfig();
+  const { data: canvasConnection } = useCanvasConnectionQuery();
   useTitleGeneration(isAuthenticated);
 
   const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
@@ -119,30 +123,30 @@ const ConversationsSection = memo(() => {
   const pendingCourseId = usePendingCourse();
 
   const hasOpenConvo = conversationId != null && conversationId !== Constants.NEW_CONVO;
-  const { data: activeConvo } = useGetConvoIdQuery(conversationId ?? '', {
-    enabled: hasOpenConvo,
-  });
+  const { data: activeConvo } = useGetConvoIdQuery(
+    conversationId ?? '',
+    {
+      enabled: hasOpenConvo,
+    },
+    canvasConnection?.canvasAccountKey,
+  );
 
   const activeCourseId = useMemo(() => {
     if (courseId != null) {
       const parsed = Number.parseInt(courseId, 10);
-      return Number.isFinite(parsed) ? parsed : null;
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
     }
     if (conversationId == null) {
       return null;
     }
     if (conversationId !== Constants.NEW_CONVO) {
-      const listed = conversations.find(
-        (conversation) => conversation?.conversationId === conversationId,
-      );
       return (
         chatMap[conversationId] ??
-        getConversationCourseId(listed) ??
-        getConversationCourseId(activeConvo)
+        (activeConvo?.canvasAccountCurrent === true ? getConversationCourseId(activeConvo) : null)
       );
     }
     return pendingCourseId;
-  }, [courseId, conversationId, chatMap, conversations, activeConvo, pendingCourseId]);
+  }, [courseId, conversationId, chatMap, activeConvo, pendingCourseId]);
 
   const submission = useRecoilValue(store.submissionByIndex(0));
 
@@ -168,7 +172,12 @@ const ConversationsSection = memo(() => {
     clearPendingCourse();
   }, [conversationId, submission]);
 
-  const showCoursePanel = activeCourseId != null && !search.query;
+  const showCoursePanel =
+    startupConfig?.learnLightEnabled === true &&
+    canvasConnection?.connected === true &&
+    typeof canvasConnection.canvasAccountKey === 'string' &&
+    activeCourseId != null &&
+    !search.query;
 
   useEffect(() => {
     if (showCoursePanel) {
@@ -220,6 +229,7 @@ const ConversationsSection = memo(() => {
       {showCoursePanel ? (
         <CoursePanel
           canvasCourseId={activeCourseId}
+          canvasAccountKey={canvasConnection.canvasAccountKey as string}
           conversations={conversations}
           toggleNav={toggleNav}
         />
@@ -252,7 +262,7 @@ const ConversationsSection = memo(() => {
                   toggleNav={toggleNav}
                   containerRef={conversationsRef}
                   loadMoreConversations={loadMoreConversations}
-                  isLoading={isFetchingNextPage || showLoading || isLoading}
+                  isLoading={isFetchingNextPage || showLoading || (isAuthenticated && isLoading)}
                   isSearchLoading={isSearchLoading}
                   isChatsExpanded={isChatsExpanded}
                   setIsChatsExpanded={setIsChatsExpanded}
@@ -262,9 +272,11 @@ const ConversationsSection = memo(() => {
             </>
           ) : (
             <>
-              <div className="px-3">
-                <FavoritesList isSmallScreen={isSmallScreen} toggleNav={toggleNav} />
-              </div>
+              {isAuthenticated && (
+                <div className="px-3">
+                  <FavoritesList isSmallScreen={isSmallScreen} toggleNav={toggleNav} />
+                </div>
+              )}
               <ProjectsSection toggleNav={toggleNav} isAuthenticated={isAuthenticated} />
               <CoursesSection toggleNav={toggleNav} />
               <div className="mt-1 flex min-h-0 flex-col overflow-hidden border-t border-border-light px-3 pt-1">

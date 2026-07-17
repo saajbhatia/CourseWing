@@ -106,7 +106,7 @@ export default function Parameters() {
 
       logger.log('parameters', 'parameters effect, updated keys:', updatedKeys);
 
-      return updatedConversation;
+      return updatedKeys.length > 0 ? updatedConversation : prev;
     });
   }, [parameters, setConversation]);
 

@@ -990,6 +990,7 @@ class BaseClient {
     const conversation = await db.saveConvo(reqCtx, fieldsToKeep, {
       context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveConvo',
       unsetFields,
+      canvasAccountKey: req?.learnLightCanvasAccountKey,
       createdAtOnInsert: shouldSetCreatedAtOnInsert ? validCreatedAtOnInsert : undefined,
     });
 

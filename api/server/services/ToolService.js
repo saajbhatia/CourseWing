@@ -28,6 +28,7 @@ const {
   buildMCPAuthRunStepDeltaEvent,
   buildMCPAuthRunStepCompletedEvent,
   isFileAuthoringToolDefinition,
+  isLearnLightEnabled,
   isLearnLightToolKey,
 } = require('@librechat/api');
 const {
@@ -521,7 +522,7 @@ const isBuiltInTool = (toolName) =>
     manifestToolMap[toolName] ||
       toolkits.some((t) => t.pluginKey === toolName) ||
       nativeTools.has(toolName) ||
-      isLearnLightToolKey(toolName),
+      (isLearnLightEnabled() && isLearnLightToolKey(toolName)),
   );
 
 /**

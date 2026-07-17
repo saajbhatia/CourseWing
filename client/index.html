@@ -18,7 +18,7 @@
       property="og:description"
       content="The course-aware AI tutor built around the class you are actually taking."
     />
-    <meta property="og:image" content="/assets/learnlight/og-app-palette.png" />
+    <meta property="og:image" content="assets/learnlight/og-app-palette.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -27,19 +27,10 @@
       name="twitter:description"
       content="The course-aware AI tutor built around the class you are actually taking."
     />
-    <meta name="twitter:image" content="/assets/learnlight/og-app-palette.png" />
+    <meta name="twitter:image" content="assets/learnlight/og-app-palette.png" />
     <title>LearnLight</title>
-    <script>
-      for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]']) {
-        const element = document.querySelector(selector);
-        if (element) {
-          element.content = new URL('/assets/learnlight/og-app-palette.png', window.location.origin).href;
-        }
-      }
-    </script>
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon-180x180.png" />
+    <link rel="icon" type="image/svg+xml" href="assets/2utorly-icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/2utorly-icon-180.png" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, interactive-widget=resizes-content"

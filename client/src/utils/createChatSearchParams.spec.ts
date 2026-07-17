@@ -1,6 +1,8 @@
 import { EModelEndpoint, Constants } from 'librechat-data-provider';
 import type { TConversation, TPreset } from 'librechat-data-provider';
-import createChatSearchParams from './createChatSearchParams';
+import createChatSearchParams, {
+  preserveTransientChatSearchParams,
+} from './createChatSearchParams';
 
 describe('createChatSearchParams', () => {
   describe('conversation inputs', () => {
@@ -358,6 +360,15 @@ describe('createChatSearchParams', () => {
       const result = createChatSearchParams({});
       expect(result.toString()).toBe('');
       expect(result instanceof URLSearchParams).toBe(true);
+    });
+
+    it('preserves a pending LearnLight handoff when conversation settings rewrite the URL', () => {
+      const result = preserveTransientChatSearchParams(
+        new URLSearchParams({ spec: 'course-tutor' }),
+        new URLSearchParams({ learnlight: 'review-session-123', prompt: 'do-not-preserve' }),
+      );
+
+      expect(result.toString()).toBe('spec=course-tutor&learnlight=review-session-123');
     });
   });
 });

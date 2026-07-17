@@ -104,6 +104,7 @@ afterEach(() => {
   delete process.env.ANALYTICS_GTM_ID;
   delete process.env.CUSTOM_FOOTER;
   delete process.env.HELP_AND_FAQ_URL;
+  delete process.env.LEARNLIGHT_ENABLED;
 });
 
 describe('GET /api/config', () => {
@@ -143,17 +144,17 @@ describe('GET /api/config', () => {
       expect(response.statusCode).toBe(200);
       expect(response.body.socialLogins).toEqual(['saml']);
       expect(response.body.turnstile).toEqual({ siteKey: 'tenant-key' });
-      expect(response.body).not.toHaveProperty('modelSpecs');
+      expect(response.body.modelSpecs).toEqual({ list: [{ name: 'test-spec' }] });
     });
 
-    it('should return minimal payload without authenticated-only fields', async () => {
+    it('should return guest chat config without authenticated-only fields', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
       const response = await request(app).get('/api/config');
 
       expect(response.statusCode).toBe(200);
-      expect(response.body).not.toHaveProperty('modelSpecs');
+      expect(response.body.modelSpecs).toEqual({ list: [{ name: 'test-spec' }] });
       expect(response.body).not.toHaveProperty('balance');
       expect(response.body).not.toHaveProperty('webSearch');
       expect(response.body).not.toHaveProperty('bundlerURL');
@@ -163,6 +164,17 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('sharePointPickerGraphScope');
       expect(response.body).not.toHaveProperty('sharePointPickerSharePointScope');
       expect(response.body).not.toHaveProperty('conversationImportMaxFileSize');
+    });
+
+    it('should expose LearnLight availability so guest assignment handoffs keep their greeting', async () => {
+      process.env.LEARNLIGHT_ENABLED = 'true';
+      mockGetAppConfig.mockResolvedValue(baseAppConfig);
+      const app = createApp(null);
+
+      const response = await request(app).get('/api/config');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body.learnLightEnabled).toBe(true);
     });
 
     it('should strip authenticated-only informational fields from unauthenticated response (#12688)', async () => {
@@ -215,7 +227,7 @@ describe('GET /api/config', () => {
       expect(response.body.turnstile).toEqual({ siteKey: 'test-key' });
     });
 
-    it('should include only privacyPolicy and termsOfService from interface config', async () => {
+    it('should include the interface config required to render guest chat', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
@@ -224,11 +236,11 @@ describe('GET /api/config', () => {
       expect(response.body.interface).toEqual({
         privacyPolicy: { externalUrl: 'https://example.com/privacy' },
         termsOfService: { externalUrl: 'https://example.com/tos' },
+        modelSelect: true,
       });
-      expect(response.body.interface).not.toHaveProperty('modelSelect');
     });
 
-    it('should not include interface if no privacyPolicy or termsOfService', async () => {
+    it('should include guest UI settings even without policy links', async () => {
       mockGetAppConfig.mockResolvedValue({
         ...baseAppConfig,
         interfaceConfig: { modelSelect: true },
@@ -237,7 +249,7 @@ describe('GET /api/config', () => {
 
       const response = await request(app).get('/api/config');
 
-      expect(response.body).not.toHaveProperty('interface');
+      expect(response.body.interface).toEqual({ modelSelect: true });
     });
 
     it('should include shared env var fields', async () => {
@@ -594,7 +606,7 @@ describe('GET /api/config', () => {
       expect(response.body.interface.buildInfo).toBe(false);
     });
 
-    it('does not add interface.buildInfo=true to unauthenticated response (default stays implicit)', async () => {
+    it('preserves an explicit interface.buildInfo=true in the guest interface config', async () => {
       mockGetAppConfig.mockResolvedValue({
         ...baseAppConfig,
         interfaceConfig: { privacyPolicy: { externalUrl: 'https://x' }, buildInfo: true },
@@ -604,7 +616,7 @@ describe('GET /api/config', () => {
       const response = await request(app).get('/api/config');
 
       expect(response.body.interface).toBeDefined();
-      expect(response.body.interface).not.toHaveProperty('buildInfo');
+      expect(response.body.interface.buildInfo).toBe(true);
     });
 
     it('includes interface block with only buildInfo=false when nothing else is set', async () => {

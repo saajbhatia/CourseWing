@@ -269,6 +269,41 @@ describe('ResumableAgentController resume metadata', () => {
     );
   });
 
+  it('reuses a conversation resolved by request middleware for timestamp and client setup', async () => {
+    const conversationId = 'conversation-123';
+    const resolvedConversation = {
+      conversationId,
+      canvasCourseId: 42,
+      createdAt: '2025-04-05T06:07:08.000Z',
+    };
+    const initializeClient = jest.fn(async ({ req: initializedReq }) => {
+      expect(initializedReq.resolvedConversation).toBe(resolvedConversation);
+      expect(initializedReq.conversationCreatedAt).toBe('2025-04-05T06:07:08.000Z');
+      throw new Error('stop after trusted conversation reuse');
+    });
+    const req = {
+      user: { id: 'user-123' },
+      resolvedConversation,
+      body: {
+        text: 'Continue this course chat.',
+        messageId: 'follow-up-user',
+        parentMessageId: 'original-response',
+        conversationId,
+        endpointOption: {
+          endpoint: 'agents',
+          modelOptions: { model: 'gpt-4.1' },
+        },
+      },
+      config: {},
+    };
+    const res = createResumableResponse();
+
+    await AgentController(req, res, jest.fn(), initializeClient, null);
+
+    expect(initializeClient).toHaveBeenCalledTimes(1);
+    expect(mockGetConvo).not.toHaveBeenCalled();
+  });
+
   it('stores the in-flight turn before MCP initialization can emit OAuth', async () => {
     const conversationId = 'conversation-123';
     const initializeClient = jest.fn().mockRejectedValue(new Error('stop before tool loading'));

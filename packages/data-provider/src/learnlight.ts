@@ -1,20 +1,22 @@
 export const assistanceLevels = ['discuss', 'hints', 'worked', 'full'] as const;
 
-const COURSE_ID_PATTERN = /Canvas course ID:\s*(\d+)/i;
-const ASSIGNMENT_ID_PATTERN = /Canvas assignment ID:\s*(\d+)/i;
+const COURSE_ID_PATTERN = /^Canvas course ID:\s*(\d+)\s*$/im;
+const ASSIGNMENT_ID_PATTERN = /^Canvas assignment ID:\s*(\d+)\s*$/im;
 
 function extractMarkedId(pattern: RegExp, promptPrefix?: string | null): number | null {
   if (!promptPrefix) {
     return null;
   }
 
-  const match = pattern.exec(promptPrefix);
-  if (!match) {
+  const matches = Array.from(
+    promptPrefix.matchAll(new RegExp(pattern.source, `${pattern.flags}g`)),
+  );
+  if (matches.length !== 1) {
     return null;
   }
 
-  const id = Number(match[1]);
-  return Number.isFinite(id) ? id : null;
+  const id = Number(matches[0][1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 export function extractCanvasCourseId(promptPrefix?: string | null): number | null {
@@ -42,8 +44,6 @@ export function getConversationCourseId(
 
 export type AssistanceLevel = (typeof assistanceLevels)[number];
 
-export const defaultAssistanceLevel: AssistanceLevel = 'full';
-
 export const learnLightPersonas = ['socratic', 'direct', 'storyteller', 'encourager'] as const;
 
 export type LearnLightPersona = (typeof learnLightPersonas)[number];
@@ -56,16 +56,8 @@ export const LEARNLIGHT_PERSONA_MARKER = '[LearnLight persona';
 export const LEARNLIGHT_CARD_MARKER = '[LearnLight course context';
 export const LEARNLIGHT_ASSIGNMENT_MARKER = '[LearnLight assignment context';
 
-/** Pre-rename ("LearnLink") markers still stored in existing conversations' prompt prefixes. */
-const LEGACY_LEVEL_LINE = 'LearnLink assistance level:';
+/** Pre-rename ("LearnLink") marker still stored in existing conversations' prompt prefixes. */
 const LEGACY_PERSONA_LINE = 'LearnLink persona:';
-const LEGACY_BLOCK_MARKERS = [
-  '[LearnLink assistance policy',
-  '[LearnLink tutor',
-  '[LearnLink persona',
-  '[LearnLink course context',
-];
-
 const LEVEL_LINE_PATTERN =
   /^LearnLi(?:ght|nk) assistance level:\s*(discuss|hints|worked|full)\s*$/im;
 const PERSONA_LINE_PATTERN =
@@ -91,43 +83,15 @@ export function extractAssistanceLevel(promptPrefix?: string | null): Assistance
  * suffix of the prefix, so everything from the earliest marker onward is dropped.
  */
 export function stripLearnLightBlocks(promptPrefix: string): string {
-  const indices = [
-    LEARNLIGHT_POLICY_MARKER,
-    LEARNLIGHT_TUTOR_MARKER,
-    LEARNLIGHT_PERSONA_MARKER,
-    LEARNLIGHT_CARD_MARKER,
-    LEARNLIGHT_ASSIGNMENT_MARKER,
-    ...LEGACY_BLOCK_MARKERS,
-  ]
-    .map((marker) => promptPrefix.indexOf(marker))
-    .filter((index) => index !== -1);
-
-  if (indices.length === 0) {
+  const marker =
+    /^\[LearnLi(?:ght|nk) (?:assistance policy|tutor|persona|course context|assignment context)(?:\b|\])/im.exec(
+      promptPrefix,
+    );
+  if (!marker || marker.index == null) {
     return promptPrefix.trimEnd();
   }
 
-  return promptPrefix.slice(0, Math.min(...indices)).trimEnd();
-}
-
-/**
- * Returns a new base prefix carrying the given assistance level as a marker line,
- * replacing any previous level line and dropping server-appended blocks (the server
- * rebuilds those every turn).
- */
-export function setAssistanceLevelInPrefix(
-  promptPrefix: string | null | undefined,
-  level: AssistanceLevel,
-): string {
-  const base = stripLearnLightBlocks(promptPrefix ?? '')
-    .split('\n')
-    .filter(
-      (line) => !line.startsWith(LEARNLIGHT_LEVEL_LINE) && !line.startsWith(LEGACY_LEVEL_LINE),
-    )
-    .join('\n')
-    .trimEnd();
-
-  const levelLine = `${LEARNLIGHT_LEVEL_LINE} ${level}`;
-  return base ? `${base}\n${levelLine}` : levelLine;
+  return promptPrefix.slice(0, marker.index).trimEnd();
 }
 
 export function isLearnLightPersona(value?: string | null): value is LearnLightPersona {

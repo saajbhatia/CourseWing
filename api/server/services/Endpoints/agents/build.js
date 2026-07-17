@@ -14,6 +14,7 @@ const buildOptions = (req, endpoint, parsedBody, endpointType) => {
     agent_id: isAgentsEndpoint(endpoint) ? agent_id : Constants.EPHEMERAL_AGENT_ID,
     endpoint,
     model_parameters,
+    applyLearnLightCourseContext: true,
   }).catch((error) => {
     logger.error(`[/agents/:${agent_id}] Error retrieving agent during build options step`, error);
     return undefined;

@@ -1,7 +1,9 @@
-import { useState, memo, useRef } from 'react';
+import { useState, memo, useRef, useCallback } from 'react';
 import { useSetRecoilState } from 'recoil';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as Menu from '@ariakit/react/menu';
 import { GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/client';
+import { buildLoginRedirectUrl } from 'librechat-data-provider';
 import {
   Archive,
   ChevronRight,
@@ -9,6 +11,7 @@ import {
   FileText,
   Keyboard,
   LifeBuoy,
+  LogIn,
   LogOut,
   Scale,
   ShieldCheck,
@@ -95,6 +98,8 @@ function HelpSubmenu({
 function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const localize = useLocalize();
   const { user, isAuthenticated, logout } = useAuthContext();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { data: startupConfig } = useGetStartupConfig();
   const balanceQuery = useGetUserBalance({
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
@@ -104,6 +109,9 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const setShowShortcutsDialog = useSetRecoilState(store.showShortcutsDialog);
   const [showArchived, setShowArchived] = useState(false);
   const accountSettingsButtonRef = useRef<HTMLButtonElement>(null);
+  const signIn = useCallback(() => {
+    navigate(buildLoginRedirectUrl(location.pathname, location.search, location.hash));
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   return (
     <Menu.MenuProvider placement={collapsed ? 'right-end' : undefined}>
@@ -129,7 +137,9 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
             className="mt-2 grow overflow-hidden text-ellipsis whitespace-nowrap text-left text-text-primary"
             style={{ marginTop: '0', marginLeft: '0' }}
           >
-            {user?.name ?? user?.username ?? localize('com_nav_user')}
+            {user?.name ??
+              user?.username ??
+              localize(isAuthenticated ? 'com_nav_user' : 'com_auth_sign_in')}
           </div>
         )}
       </Menu.MenuButton>
@@ -142,7 +152,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
         }}
       >
         <div className="text-token-text-secondary ml-3 mr-2 py-2 text-sm" role="note">
-          {user?.email ?? localize('com_nav_user')}
+          {user?.email ?? localize(isAuthenticated ? 'com_nav_user' : 'com_auth_sign_in')}
         </div>
         <DropdownMenuSeparator />
         {startupConfig?.balance?.enabled === true && balanceQuery.data != null && (
@@ -160,27 +170,39 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
           privacyPolicyURL={startupConfig?.interface?.privacyPolicy?.externalUrl}
           onShowShortcuts={() => setShowShortcutsDialog(true)}
         />
-        <Menu.MenuItem onClick={() => setShowFiles(true)} className="select-item text-sm">
-          <FileText className="icon-md" aria-hidden="true" />
-          {localize('com_nav_my_files')}
-        </Menu.MenuItem>
-        <Menu.MenuItem onClick={() => setShowArchived(true)} className="select-item text-sm">
-          <Archive className="icon-md" aria-hidden="true" />
-          {localize('com_nav_archived_chats')}
-        </Menu.MenuItem>
-        <Menu.MenuItem
-          onClick={() => setShowSettings(true)}
-          className="select-item text-sm"
-          data-testid="nav-settings"
-        >
-          <GearIcon className="icon-md" aria-hidden="true" />
-          {localize('com_nav_settings')}
-        </Menu.MenuItem>
-        <DropdownMenuSeparator />
-        <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
-          <LogOut className="icon-md" aria-hidden="true" />
-          {localize('com_nav_log_out')}
-        </Menu.MenuItem>
+        {isAuthenticated ? (
+          <>
+            <Menu.MenuItem onClick={() => setShowFiles(true)} className="select-item text-sm">
+              <FileText className="icon-md" aria-hidden="true" />
+              {localize('com_nav_my_files')}
+            </Menu.MenuItem>
+            <Menu.MenuItem onClick={() => setShowArchived(true)} className="select-item text-sm">
+              <Archive className="icon-md" aria-hidden="true" />
+              {localize('com_nav_archived_chats')}
+            </Menu.MenuItem>
+            <Menu.MenuItem
+              onClick={() => setShowSettings(true)}
+              className="select-item text-sm"
+              data-testid="nav-settings"
+            >
+              <GearIcon className="icon-md" aria-hidden="true" />
+              {localize('com_nav_settings')}
+            </Menu.MenuItem>
+            <DropdownMenuSeparator />
+            <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
+              <LogOut className="icon-md" aria-hidden="true" />
+              {localize('com_nav_log_out')}
+            </Menu.MenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuSeparator />
+            <Menu.MenuItem onClick={signIn} className="select-item text-sm">
+              <LogIn className="icon-md" aria-hidden="true" />
+              {localize('com_auth_sign_in')}
+            </Menu.MenuItem>
+          </>
+        )}
       </Menu.Menu>
       {showFiles && (
         <MyFilesModal

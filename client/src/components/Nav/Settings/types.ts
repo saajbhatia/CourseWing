@@ -42,6 +42,7 @@ export interface SettingsContextValue {
   hasUserProvidedEndpoints: boolean;
   hasMultiConvo: boolean;
   hasPrompts: boolean;
+  learnLightEnabled: boolean;
   isLocalProvider: boolean;
   twoFactorEnabled: boolean;
   allowAccountDeletion: boolean;

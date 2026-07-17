@@ -8,6 +8,7 @@ const {
   sanitizeModelSpecs,
   excludeHiddenModelSpecs,
   isFileSnapshotEnabled,
+  isLearnLightEnabled,
 } = require('@librechat/api');
 const { EModelEndpoint, defaultSocialLogins } = require('librechat-data-provider');
 const { logger, getTenantId, SystemCapabilities } = require('@librechat/data-schemas');
@@ -142,6 +143,7 @@ function buildPostLoginPayload() {
     sharedLinksEnabled,
     publicSharedLinksEnabled,
     openidReuseTokens,
+    learnLightEnabled: isLearnLightEnabled(),
     /** Read inline (not module-level) for per-request evaluation and test isolation */
     allowAccountDeletion:
       process.env.ALLOW_ACCOUNT_DELETION === undefined ||
@@ -216,6 +218,10 @@ router.get('/', async function (req, res) {
       /** @type {Partial<TStartupConfig>} */
       const payload = {
         ...preLoginPayload,
+        // Guest course and assignment handoffs render inside the chat landing page.
+        // This is only a feature-availability bit; Canvas identity and credentials
+        // remain behind the dedicated bounded LearnLight routes.
+        learnLightEnabled: isLearnLightEnabled(),
         socialLogins: baseConfig?.registration?.socialLogins ?? defaultSocialLogins,
         turnstile: baseConfig?.turnstileConfig,
         ...(rum ? { rum } : {}),

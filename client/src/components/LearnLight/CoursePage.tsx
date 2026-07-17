@@ -1,12 +1,17 @@
 import { useMemo, useState } from 'react';
-import { Spinner } from '@librechat/client';
+import { Spinner, useToastContext } from '@librechat/client';
 import { addDays, format, isSameDay } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, ArrowUp, Files, Sparkles } from 'lucide-react';
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import type { LearnLightAssignment } from '~/data-provider/LearnLight';
 import type { LearnLightCourseIdentity } from './utils';
-import { useCourseMaterialsQuery, useCurrentCoursesQuery } from '~/data-provider/LearnLight';
+import {
+  useCanvasConnectionQuery,
+  useCourseMaterialsQuery,
+  useCurrentCoursesQuery,
+} from '~/data-provider/LearnLight';
+import { bucketAssignments } from './assignments';
 import {
   getDisplayCourseName,
   getAssignmentPrefix,
@@ -22,16 +27,6 @@ import { cn } from '~/utils';
 
 type CourseTab = 'overview' | 'assignments';
 
-type AssignmentBuckets = {
-  upNext: LearnLightAssignment[];
-  overdue: LearnLightAssignment[];
-  thisWeek: LearnLightAssignment[];
-  later: LearnLightAssignment[];
-};
-
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const UP_NEXT_LIMIT = 5;
-
 const pillButtonClassName =
   'shrink-0 rounded-full border border-border-medium px-3.5 py-1 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary';
 
@@ -40,37 +35,6 @@ const smartPromptKeys: TranslationKeys[] = [
   'com_ui_course_prompt_study_guide',
   'com_ui_course_prompt_plan',
 ];
-
-function bucketAssignments(assignments: LearnLightAssignment[], now: number): AssignmentBuckets {
-  const overdue: LearnLightAssignment[] = [];
-  const thisWeek: LearnLightAssignment[] = [];
-  const later: LearnLightAssignment[] = [];
-  const undated: LearnLightAssignment[] = [];
-
-  for (const assignment of assignments) {
-    const due = assignment.dueAt != null ? Date.parse(assignment.dueAt) : Number.NaN;
-    if (Number.isNaN(due)) {
-      undated.push(assignment);
-    } else if (due < now) {
-      overdue.push(assignment);
-    } else if (due <= now + WEEK_MS) {
-      thisWeek.push(assignment);
-    } else {
-      later.push(assignment);
-    }
-  }
-
-  const byDueAsc = (a: LearnLightAssignment, b: LearnLightAssignment) =>
-    Date.parse(a.dueAt ?? '') - Date.parse(b.dueAt ?? '');
-  overdue.sort((a, b) => byDueAsc(b, a));
-  thisWeek.sort(byDueAsc);
-  later.sort(byDueAsc);
-
-  const upcoming = thisWeek.concat(later);
-  const upNext = (upcoming.length > 0 ? upcoming : overdue).slice(0, UP_NEXT_LIMIT);
-
-  return { upNext, overdue, thisWeek, later: later.concat(undated) };
-}
 
 function getDueLabel(
   localize: ReturnType<typeof useLocalize>,
@@ -126,13 +90,17 @@ function AssignmentRow({
 
 function CourseView({ course }: { course: LearnLightCourseIdentity & { name: string } }) {
   const localize = useLocalize();
+  const { showToast } = useToastContext();
   const navigate = useNavigate();
   const { newConversation } = useNewConvo();
   const [draft, setDraft] = useState('');
   const [activeTab, setActiveTab] = useState<CourseTab>('overview');
-  const { data: materials, isLoading: isMaterialsLoading } = useCourseMaterialsQuery(
-    course.canvasCourseId,
-  );
+  const {
+    data: materials,
+    isLoading: isMaterialsLoading,
+    isError: isMaterialsError,
+    refetch: refetchMaterials,
+  } = useCourseMaterialsQuery(course.canvasCourseId);
 
   const buckets = useMemo(
     () => bucketAssignments(materials?.assignments ?? [], learnlightNow().getTime()),
@@ -142,22 +110,31 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
   const displayName = getDisplayCourseName(course.name);
   const color = getCourseColor(course.canvasCourseId);
 
+  const startCourseChat = (options: Parameters<typeof openCourseChat>[3]) => {
+    if (!openCourseChat(navigate, newConversation, course, options)) {
+      showToast({
+        status: 'error',
+        message: localize('com_ui_guest_handoff_error'),
+      });
+    }
+  };
+
   const startAssignmentChat = (assignment: LearnLightAssignment) => {
-    openCourseChat(navigate, newConversation, course, {
+    startCourseChat({
       promptPrefix: getAssignmentPrefix(course, assignment),
       greeting: localize('com_ui_assignment_chat_greeting', { name: assignment.name }),
     });
   };
 
   const startPromptChat = (text: string) => {
-    openCourseChat(navigate, newConversation, course, {
+    startCourseChat({
       promptPrefix: getCoursePrefix(course),
       prompt: text,
     });
   };
 
   const startReviewChat = () => {
-    openCourseChat(navigate, newConversation, course, {
+    startCourseChat({
       promptPrefix: getReviewPrefix(course),
       prompt: localize('com_ui_course_prompt_review'),
     });
@@ -166,7 +143,7 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
   const handleComposerSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    openCourseChat(navigate, newConversation, course, {
+    startCourseChat({
       promptPrefix: getCoursePrefix(course),
       ...(text ? { prompt: text } : { greeting: localize('com_ui_course_chat_greeting') }),
     });
@@ -194,17 +171,36 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
     { key: 'com_ui_overdue', assignments: buckets.overdue },
     { key: 'com_ui_this_week', assignments: buckets.thisWeek },
     { key: 'com_ui_later', assignments: buckets.later },
+    { key: 'com_ui_completed', assignments: buckets.completed },
   ];
   const hasAssignments = assignmentGroups.some((group) => group.assignments.length > 0);
 
-  const renderEmpty = () =>
-    isMaterialsLoading ? (
-      <div className="flex justify-start py-2">
-        <Spinner className="h-4 w-4 text-text-secondary" />
-      </div>
-    ) : (
+  const renderEmpty = () => {
+    if (isMaterialsLoading) {
+      return (
+        <div className="flex justify-start py-2">
+          <Spinner className="h-4 w-4 text-text-secondary" />
+        </div>
+      );
+    }
+    if (isMaterialsError) {
+      return (
+        <div className="flex items-center gap-3 py-2 text-sm text-text-secondary">
+          <span>{localize('com_ui_courses_unavailable')}</span>
+          <button
+            type="button"
+            className="font-medium text-text-primary underline underline-offset-2"
+            onClick={() => void refetchMaterials()}
+          >
+            {localize('com_ui_retry')}
+          </button>
+        </div>
+      );
+    }
+    return (
       <div className="py-2 text-sm text-text-secondary">{localize('com_ui_no_assignments')}</div>
     );
+  };
 
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-primary text-text-primary">
@@ -308,7 +304,6 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
             className="flex items-center gap-2 rounded-3xl border border-border-medium bg-surface-primary px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-ring-primary"
           >
             <input
-              autoFocus
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder={localize('com_ui_ask_about_course', { name: displayName })}
@@ -334,17 +329,41 @@ export default function CoursePage() {
   const parsedId = Number.parseInt(courseId, 10);
   const canvasCourseId = Number.isFinite(parsedId) ? parsedId : null;
 
-  const { data: currentCourses = [], isLoading } = useCurrentCoursesQuery();
+  const connection = useCanvasConnectionQuery();
+  const {
+    data: currentCourses = [],
+    isLoading,
+    isError: isCoursesError,
+    refetch: refetchCourses,
+  } = useCurrentCoursesQuery();
   const course = currentCourses.find((item) => item.canvasCourseId === canvasCourseId);
 
-  if (course != null) {
+  if (connection.data?.connected === true && course != null) {
     return <CourseView key={course.canvasCourseId} course={course} />;
   }
 
-  if (isLoading && canvasCourseId != null) {
+  if (
+    canvasCourseId != null &&
+    (connection.isLoading || (connection.data?.connected === true && isLoading))
+  ) {
     return (
       <main className="flex h-full items-center justify-center bg-surface-primary">
         <Spinner className="h-5 w-5 text-text-secondary" />
+      </main>
+    );
+  }
+
+  if (connection.isError || isCoursesError) {
+    return (
+      <main className="flex h-full items-center justify-center gap-3 bg-surface-primary text-sm text-text-secondary">
+        <span>{localize('com_ui_courses_unavailable')}</span>
+        <button
+          type="button"
+          className="font-medium text-text-primary underline underline-offset-2"
+          onClick={() => void (connection.isError ? connection.refetch() : refetchCourses())}
+        >
+          {localize('com_ui_retry')}
+        </button>
       </main>
     );
   }

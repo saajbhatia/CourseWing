@@ -14,6 +14,7 @@ import {
   useQueryParams,
   useSubmitMessage,
   useFocusChatEffect,
+  useAuthContext,
 } from '~/hooks';
 import {
   useChatContext,
@@ -75,6 +76,7 @@ const ChatForm = memo(function ChatForm({
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   useFocusChatEffect(textAreaRef);
   const localize = useLocalize();
+  const { isAuthenticated } = useAuthContext();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [, setIsScrollable] = useState(false);
@@ -377,8 +379,12 @@ const ChatForm = memo(function ChatForm({
                   setFilesLoading={setFilesLoading}
                 />
               </div>
-              <PersonaSelector />
-              <FeedbackButton />
+              {startupConfig?.learnLightEnabled === true && (
+                <>
+                  <PersonaSelector />
+                  {isAuthenticated && <FeedbackButton />}
+                </>
+              )}
               <BadgeRow
                 showEphemeralBadges={
                   !!endpoint &&

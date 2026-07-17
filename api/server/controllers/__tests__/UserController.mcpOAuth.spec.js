@@ -88,7 +88,9 @@ jest.mock('~/cache', () => ({
 
 const { logger, getTenantId } = require('@librechat/data-schemas');
 const { MCPTokenStorage, MCPOAuthHandler } = require('@librechat/api');
+const { updateUserPluginAuth } = require('~/server/services/PluginService');
 const { updateUserPluginsController } = require('~/server/controllers/UserController');
+const { RESERVED_LEARNLIGHT_AUTH_FIELDS } = require('~/server/services/LearnLightAuth');
 
 function createResponse() {
   const res = {};
@@ -150,6 +152,72 @@ function setupMCPMocks() {
 beforeEach(() => {
   jest.clearAllMocks();
   getTenantId.mockReturnValue(undefined);
+});
+
+describe('updateUserPluginsController LearnLight credential isolation', () => {
+  function createExploitRequest({
+    pluginKey = 'attacker-plugin',
+    action = 'install',
+    auth = { SAFE_FIELD: 'value' },
+  } = {}) {
+    return {
+      config: {},
+      user: {
+        id: 'authenticated-user',
+        _id: 'authenticated-user',
+        plugins: [],
+        role: 'USER',
+      },
+      body: { pluginKey, action, auth },
+    };
+  }
+
+  it.each(RESERVED_LEARNLIGHT_AUTH_FIELDS)(
+    'blocks authenticated install of reserved auth field %s',
+    async (authField) => {
+      const res = createResponse();
+      await updateUserPluginsController(
+        createExploitRequest({ auth: { [authField]: 'attacker-controlled' } }),
+        res,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'This plugin authentication namespace is reserved.',
+      });
+      expect(mockUpdateUserPlugins).not.toHaveBeenCalled();
+      expect(updateUserPluginAuth).not.toHaveBeenCalled();
+      expect(mockDeleteUserPluginAuth).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['LEARNLIGHT_CANVAS_BASE_URL', 'LEARNLINK_CANVAS_USER_ID'])(
+    'reserves future Canvas auth namespace field %s',
+    async (authField) => {
+      const res = createResponse();
+      await updateUserPluginsController(
+        createExploitRequest({ auth: { [authField]: 'attacker-controlled' } }),
+        res,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockUpdateUserPlugins).not.toHaveBeenCalled();
+      expect(updateUserPluginAuth).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['learnlight', 'LearnLight', 'learnlink'])(
+    'blocks authenticated install of reserved plugin key %s before changing user plugins',
+    async (pluginKey) => {
+      const res = createResponse();
+      await updateUserPluginsController(createExploitRequest({ pluginKey }), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockUpdateUserPlugins).not.toHaveBeenCalled();
+      expect(updateUserPluginAuth).not.toHaveBeenCalled();
+      expect(mockDeleteUserPluginAuth).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('updateUserPluginsController MCP OAuth cleanup', () => {

@@ -75,6 +75,7 @@ function TestConsumer() {
     <div
       data-testid="consumer"
       data-authenticated={ctx.isAuthenticated}
+      data-guest={ctx.isGuest}
       data-roles={JSON.stringify(ctx.roles ?? {})}
     />
   );
@@ -116,6 +117,149 @@ function renderProviderLive() {
     </QueryClientProvider>,
   );
 }
+
+describe('AuthContextProvider — guest routes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it.each(['/', '/c/new'])(
+    'allows a first-time visitor to browse %s after refresh fails',
+    (path) => {
+      window.history.replaceState({}, '', path);
+      const { getByTestId } = renderProviderLive();
+      const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+        unknown,
+        { onError: (error: unknown) => void },
+      ];
+
+      act(() => {
+        refreshOptions.onError(new Error('No session'));
+      });
+
+      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
+      expect(mockNavigate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    '/c/abc123',
+    '/c/new/extra',
+    '/courses',
+    '/courses/0',
+    '/courses/foo',
+    '/courses/11464/extra',
+  ])('requires login for non-guest route %s', (path) => {
+    window.history.replaceState({}, '', path);
+    const { getByTestId } = renderProviderLive();
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onError: (error: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onError(new Error('No session'));
+    });
+
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it('allows a direct public course page for a first-time visitor', () => {
+    window.history.replaceState({}, '', '/courses/11464');
+    const { getByTestId } = renderProviderLive();
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onError: (error: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onError(new Error('No session'));
+    });
+
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it.each(['/chat', '/chat/', '/chat/c/new', '/chat/courses/11464'])(
+    'allows exact guest route %s under a configured basename',
+    (path) => {
+      mockApiBaseUrl.mockReturnValue('/chat');
+      window.history.replaceState({}, '', path);
+      const { getByTestId } = renderProviderLive();
+      const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+        unknown,
+        { onError: (error: unknown) => void },
+      ];
+
+      act(() => {
+        refreshOptions.onError(new Error('No session'));
+      });
+
+      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
+      expect(mockNavigate).not.toHaveBeenCalled();
+      mockApiBaseUrl.mockReturnValue('');
+    },
+  );
+
+  it('does not treat a stored conversation under the basename as a guest route', () => {
+    mockApiBaseUrl.mockReturnValue('/chat');
+    window.history.replaceState({}, '', '/chat/c/abc123');
+    const { getByTestId } = renderProviderLive();
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onError: (error: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onError(new Error('No session'));
+    });
+
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+    expect(mockNavigate).toHaveBeenCalled();
+    mockApiBaseUrl.mockReturnValue('');
+  });
+
+  it('redirects a returning visitor to login instead of entering guest mode', () => {
+    localStorage.setItem('hasPriorSession', '1');
+    window.history.replaceState({}, '', '/c/new');
+    const { getByTestId } = renderProviderLive();
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onError: (error: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onError(new Error('Expired session'));
+    });
+
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+    expect(mockNavigate).toHaveBeenCalledWith('/login?redirect_to=%2Fc%2Fnew');
+  });
+
+  it('keeps a public course page visible for a returning logged-out visitor', () => {
+    localStorage.setItem('hasPriorSession', '1');
+    window.history.replaceState({}, '', '/courses/11464');
+    const { getByTestId } = renderProviderLive();
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onError: (error: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onError(new Error('Expired session'));
+    });
+
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+});
 
 describe('AuthContextProvider — login onError redirect handling', () => {
   beforeEach(() => {

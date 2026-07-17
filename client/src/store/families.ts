@@ -16,6 +16,7 @@ import type { TOptionSettings, ExtendedFile } from '~/common';
 import {
   clearModelForNonEphemeralAgent,
   createChatSearchParams,
+  preserveTransientChatSearchParams,
   storeEndpointSettings,
   logger,
 } from '~/utils';
@@ -92,7 +93,10 @@ const conversationByIndex = atomFamily<TConversation | null, string | number>({
           (oldValue as TConversation)?.conversationId === Constants.NEW_CONVO;
 
         if (shouldUpdateParams) {
-          const newParams = createChatSearchParams(newValue);
+          const newParams = preserveTransientChatSearchParams(
+            createChatSearchParams(newValue),
+            new URLSearchParams(window.location.search),
+          );
           if (newValue.chatProjectId) {
             newParams.set('projectId', newValue.chatProjectId);
           }

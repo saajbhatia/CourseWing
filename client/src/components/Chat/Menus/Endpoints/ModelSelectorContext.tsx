@@ -5,6 +5,7 @@ import type * as t from 'librechat-data-provider';
 import type { Endpoint, SelectedValues } from '~/common';
 import {
   useAgentDefaultPermissionLevel,
+  useAuthContext,
   useSelectorEffects,
   useKeyDialog,
   useEndpoints,
@@ -55,6 +56,7 @@ interface ModelSelectorProviderProps {
 }
 
 export function ModelSelectorProvider({ children, startupConfig }: ModelSelectorProviderProps) {
+  const { isAuthenticated } = useAuthContext();
   const agentsMap = useAgentsMapContext();
   const assistantsMap = useAssistantsMapContext();
   const { data: endpointsConfig } = useGetEndpointsQuery();
@@ -85,6 +87,7 @@ export function ModelSelectorProvider({ children, startupConfig }: ModelSelector
   const { data: agents = null } = useListAgentsQuery(
     { requiredPermission: permissionLevel },
     {
+      enabled: isAuthenticated,
       select: (data) => data?.data,
     },
   );

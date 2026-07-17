@@ -21,6 +21,7 @@ const { storage, importFileFilter } = require('~/server/routes/files/multer');
 const requireJwtAuth = require('~/server/middleware/requireJwtAuth');
 const { importConversations } = require('~/server/utils/import');
 const getLogStores = require('~/cache/getLogStores');
+const { getLearnLightCanvasIdentity } = require('~/server/services/LearnLight');
 const db = require('~/models');
 
 const assistantClients = {
@@ -44,9 +45,16 @@ router.get('/', async (req, res) => {
   const projectId = Array.isArray(req.query.projectId)
     ? req.query.projectId[0]
     : req.query.projectId;
+  const rawCanvasCourseId = Array.isArray(req.query.canvasCourseId)
+    ? req.query.canvasCourseId[0]
+    : req.query.canvasCourseId;
+  const canvasCourseId = rawCanvasCourseId == null ? undefined : Number(rawCanvasCourseId);
 
   if (!isValidProjectFilter(projectId)) {
     return res.status(400).json({ error: 'projectId must be a valid project id or unassigned' });
+  }
+  if (rawCanvasCourseId != null && (!Number.isSafeInteger(canvasCourseId) || canvasCourseId <= 0)) {
+    return res.status(400).json({ error: 'canvasCourseId must be a positive integer' });
   }
 
   let tags;
@@ -55,9 +63,13 @@ router.get('/', async (req, res) => {
   }
 
   try {
+    const canvasIdentity =
+      canvasCourseId != null ? await getLearnLightCanvasIdentity(req.user.id) : null;
     const result = await db.getConvosByCursor(req.user.id, {
       cursor,
       limit,
+      canvasCourseId,
+      canvasAccountKey: canvasIdentity?.canvasAccountKey,
       isArchived,
       tags,
       search,
@@ -77,7 +89,20 @@ router.get('/:conversationId', async (req, res) => {
   const convo = await db.getConvo(req.user.id, conversationId);
 
   if (convo) {
-    res.status(200).json(convo);
+    let canvasAccountCurrent = false;
+    if (convo.canvasCourseId != null) {
+      try {
+        const [identity, conversationAccountKey] = await Promise.all([
+          getLearnLightCanvasIdentity(req.user.id),
+          db.getConvoCanvasAccountKey(req.user.id, conversationId),
+        ]);
+        canvasAccountCurrent =
+          conversationAccountKey != null && conversationAccountKey === identity?.canvasAccountKey;
+      } catch (error) {
+        logger.warn('[convos] Could not verify Canvas account scope for conversation', error);
+      }
+    }
+    res.status(200).json({ ...convo, canvasAccountCurrent });
   } else {
     res.status(404).end();
   }

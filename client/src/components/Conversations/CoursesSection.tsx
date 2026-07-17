@@ -24,7 +24,8 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
   const { data: courses = [], isLoading, isError, isFetching, refetch } = useCurrentCoursesQuery();
   const { data: connection } = useCanvasConnectionQuery();
   const isSyncing =
-    connection?.connected === true && (connection.syncing === true || connection.lastSyncAt == null);
+    connection?.connected === true &&
+    (connection.syncing === true || connection.lastSyncAt == null);
 
   const sortedCourses = useMemo(
     () => [...courses].sort((a, b) => a.name.localeCompare(b.name)),
@@ -105,6 +106,10 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
       </ul>
     );
   };
+
+  if (connection?.enabled === false || connection?.connected !== true) {
+    return null;
+  }
 
   return (
     <div className="flex shrink-0 flex-col border-t border-border-light px-3 pb-2 pt-1 text-sm">

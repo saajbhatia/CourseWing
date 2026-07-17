@@ -43,6 +43,11 @@ const convoSchema: Schema<IConversation> = new Schema(
       type: Number,
       index: true,
     },
+    canvasAccountKey: {
+      type: String,
+      index: true,
+      select: false,
+    },
     files: {
       type: [String],
     },
@@ -65,6 +70,7 @@ convoSchema.index({ createdAt: 1, updatedAt: 1 });
 convoSchema.index({ conversationId: 1, user: 1, tenantId: 1 }, { unique: true });
 convoSchema.index({ user: 1, chatProjectId: 1, updatedAt: -1, _id: -1 });
 convoSchema.index({ user: 1, chatProjectId: 1, createdAt: -1, _id: -1 });
+convoSchema.index({ user: 1, canvasAccountKey: 1, canvasCourseId: 1, updatedAt: -1, _id: -1 });
 
 convoSchema.index({ user: 1, isTemporary: 1, expiredAt: 1 });
 // index for MeiliSearch sync operations

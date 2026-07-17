@@ -2,6 +2,11 @@ import { useSyncExternalStore } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { LearnLightAssignment, LearnLightCourseSummary } from '~/data-provider/LearnLight';
 import { Constants } from 'librechat-data-provider';
+import {
+  clearPendingGuestCourseContext,
+  setPendingGuestCourseContext,
+  PENDING_COURSE_KEY,
+} from '~/utils/pendingCourseContext';
 
 export type LearnLightCourseIdentity = Pick<
   LearnLightCourseSummary,
@@ -21,6 +26,30 @@ const courseColors = [
 
 const fakeNowMs = Date.parse(import.meta.env.VITE_LEARNLIGHT_FAKE_NOW ?? '');
 
+/** Canvas names are untrusted text; keep them on one inert prefix line. */
+function prefixValue(value: string): string {
+  let normalized = '';
+  let replacingControlRun = false;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isLineBreakingControl =
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      codePoint === 0x2028 ||
+      codePoint === 0x2029;
+    if (isLineBreakingControl) {
+      if (!replacingControlRun) {
+        normalized += ' ';
+      }
+      replacingControlRun = true;
+      continue;
+    }
+    replacingControlRun = false;
+    normalized += character;
+  }
+  return normalized.trim();
+}
+
 /** Demo/testing override: `VITE_LEARNLIGHT_FAKE_NOW` makes course views pretend "now" is that instant. */
 export function learnlightNow(): Date {
   return Number.isNaN(fakeNowMs) ? new Date() : new Date(fakeNowMs);
@@ -28,6 +57,10 @@ export function learnlightNow(): Date {
 
 export const iconButtonClassName =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-secondary outline-none transition-colors hover:bg-surface-active-alt hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white';
+
+/** Shared pill styling for the tutor toolbar buttons (persona selector, feedback). */
+export const pillButtonClassName =
+  'group relative inline-flex items-center justify-center gap-1.5 rounded-full border border-border-medium text-sm font-medium size-9 max-w-fit p-2 transition-all md:w-full md:p-3 bg-transparent shadow-sm hover:bg-surface-hover hover:shadow-md active:shadow-inner';
 
 export function getCourseColor(canvasCourseId: number): { background: string; foreground: string } {
   return courseColors[Math.abs(canvasCourseId) % courseColors.length];
@@ -38,18 +71,19 @@ export function getCourseInitial(name: string): string {
   return firstWord.charAt(0).toUpperCase() || 'C';
 }
 
+/** Strips trailing academic years ("Biology 2024", "Chem 2025-26") without eating course numbers ("Physics 2100"). */
 export function getDisplayCourseName(name: string): string {
   return name
     .replace(/\s+(?:20)?\d{2}\s*[-–]\s*(?:20)?\d{2}\s*$/u, '')
-    .replace(/\s+\(?\d{4}\)?\s*$/u, '')
+    .replace(/\s+\(?(?:19|20)\d{2}\)?\s*$/u, '')
     .trim();
 }
 
 export function getCoursePrefix(course: LearnLightCourseIdentity): string {
   return [
-    `Current Canvas course: ${course.name}`,
     `Canvas course ID: ${course.canvasCourseId}`,
-    course.courseCode ? `Course code: ${course.courseCode}` : '',
+    `Current Canvas course: ${prefixValue(course.name)}`,
+    course.courseCode ? `Course code: ${prefixValue(course.courseCode)}` : '',
     'The student is chatting within this course. Ground your help in this course’s material.',
   ]
     .filter(Boolean)
@@ -62,8 +96,8 @@ export function getAssignmentPrefix(
 ): string {
   return [
     getCoursePrefix(course),
-    `Assignment: ${assignment.name}`,
     `Canvas assignment ID: ${assignment.canvasAssignmentId}`,
+    `Assignment: ${prefixValue(assignment.name)}`,
     assignment.dueAt ? `Due: ${assignment.dueAt}` : '',
     'The student wants help with this assignment.',
   ]
@@ -81,7 +115,10 @@ export function getReviewPrefix(course: LearnLightCourseIdentity): string {
   ].join('\n');
 }
 
-export type NewConversationCall = (options?: { disableFocus?: boolean }) => void;
+export type NewConversationCall = (options?: {
+  disableFocus?: boolean;
+  template?: { promptPrefix?: string };
+}) => void;
 
 export type CourseChatOptions = {
   promptPrefix: string;
@@ -89,41 +126,106 @@ export type CourseChatOptions = {
   prompt?: string;
 };
 
+export type CourseChatHandoff = Pick<CourseChatOptions, 'promptPrefix' | 'prompt'>;
+
 export function openCourseChat(
   navigate: NavigateFunction,
   newConversation: NewConversationCall,
   course: LearnLightCourseIdentity,
   options: CourseChatOptions,
-): void {
-  if (options.greeting) {
-    sessionStorage.setItem(PENDING_GREETING_KEY, options.greeting);
-  } else {
-    sessionStorage.removeItem(PENDING_GREETING_KEY);
+): boolean {
+  let handoffId: string;
+  try {
+    if (options.greeting) {
+      sessionStorage.setItem(PENDING_GREETING_KEY, options.greeting);
+    } else {
+      sessionStorage.removeItem(PENDING_GREETING_KEY);
+    }
+    setPendingCourse(course.canvasCourseId);
+    setPendingGuestCourseContext(course.canvasCourseId, options.promptPrefix);
+    handoffId = createCourseChatHandoff({
+      promptPrefix: options.promptPrefix,
+      ...(options.prompt ? { prompt: options.prompt } : {}),
+    });
+  } catch {
+    clearPendingCourse();
+    return false;
   }
-  setPendingCourse(course.canvasCourseId);
-  newConversation({ disableFocus: true });
-  /**
-   * Course chats opened via URL params can't use a `spec` param — useQueryParams replaces the
-   * whole preset with the spec's, dropping promptPrefix. Carry only promptPrefix so the
-   * default spec's endpoint settings stay intact; endpoint-specific params here would never
-   * register as "applied" and useQueryParams would drop the auto-submit.
-   */
-  const params = new URLSearchParams({
-    promptPrefix: options.promptPrefix,
+  /** Apply course context in the same state transition as the default model spec. Passing the
+   * prefix through URL settings causes useQueryParams to create a second preset and can strip
+   * the selected spec down to its raw endpoint/model. */
+  newConversation({
+    disableFocus: true,
+    template: { promptPrefix: options.promptPrefix },
   });
-  if (options.prompt) {
-    params.set('prompt', options.prompt);
-    params.set('submit', 'true');
-  }
-  navigate(`/c/${Constants.NEW_CONVO}?${params.toString()}`, { state: { focusChat: true } });
+  // The URL carries only a one-time opaque handle. Course names, assignment details,
+  // prefixes, and student prompts stay out of browser history, referrers, and access logs.
+  navigate(`/c/${Constants.NEW_CONVO}?learnlight=${encodeURIComponent(handoffId)}`, {
+    state: { focusChat: true },
+  });
+  return true;
 }
 
-const PENDING_COURSE_KEY = 'learnlight:pendingCourse';
 const PENDING_GREETING_KEY = 'learnlight:pendingGreeting';
+const COURSE_CHAT_HANDOFF_PREFIX = 'learnlight:chat-handoff:';
 const PENDING_COURSE_EVENT = 'learnlight:pending-course-changed';
 
+function createCourseChatHandoff(handoff: CourseChatHandoff): string {
+  const handoffId =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  sessionStorage.setItem(`${COURSE_CHAT_HANDOFF_PREFIX}${handoffId}`, JSON.stringify(handoff));
+  return handoffId;
+}
+
+/** Reads and deletes a single LearnLight navigation handoff. */
+export function consumeCourseChatHandoff(handoffId: string | null): CourseChatHandoff | null {
+  if (handoffId == null || !/^[\w-]{8,128}$/u.test(handoffId)) {
+    return null;
+  }
+  const key = `${COURSE_CHAT_HANDOFF_PREFIX}${handoffId}`;
+  let raw: string | null;
+  try {
+    raw = sessionStorage.getItem(key);
+    sessionStorage.removeItem(key);
+  } catch {
+    return null;
+  }
+  if (raw == null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<CourseChatHandoff>;
+    if (
+      typeof parsed.promptPrefix !== 'string' ||
+      parsed.promptPrefix.trim().length === 0 ||
+      parsed.promptPrefix.length > 20000
+    ) {
+      return null;
+    }
+    if (
+      parsed.prompt != null &&
+      (typeof parsed.prompt !== 'string' || parsed.prompt.length > 20000)
+    ) {
+      return null;
+    }
+    return {
+      promptPrefix: parsed.promptPrefix,
+      ...(parsed.prompt ? { prompt: parsed.prompt } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getPendingCourse(): number | null {
-  const raw = sessionStorage.getItem(PENDING_COURSE_KEY);
+  let raw: string | null;
+  try {
+    raw = sessionStorage.getItem(PENDING_COURSE_KEY);
+  } catch {
+    return null;
+  }
   if (raw == null) {
     return null;
   }
@@ -131,19 +233,34 @@ export function getPendingCourse(): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function setPendingCourse(canvasCourseId: number): void {
+function setPendingCourse(canvasCourseId: number): void {
   sessionStorage.setItem(PENDING_COURSE_KEY, String(canvasCourseId));
   window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
 }
 
 export function clearPendingCourse(): void {
-  sessionStorage.removeItem(PENDING_COURSE_KEY);
-  sessionStorage.removeItem(PENDING_GREETING_KEY);
+  try {
+    sessionStorage.removeItem(PENDING_COURSE_KEY);
+    sessionStorage.removeItem(PENDING_GREETING_KEY);
+    for (let index = sessionStorage.length - 1; index >= 0; index--) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(COURSE_CHAT_HANDOFF_PREFIX)) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Storage may be blocked; the in-memory course panel can still reset safely.
+  }
+  clearPendingGuestCourseContext();
   window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
 }
 
 function getPendingGreeting(): string | null {
-  return sessionStorage.getItem(PENDING_GREETING_KEY);
+  try {
+    return sessionStorage.getItem(PENDING_GREETING_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function usePendingGreeting(): string | null {

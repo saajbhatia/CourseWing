@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const passport = require('passport');
 const { ErrorTypes } = require('librechat-data-provider');
-const { hashToken, logger } = require('@librechat/data-schemas');
+const { hashToken, logger, getTenantId } = require('@librechat/data-schemas');
 const { Strategy: SamlStrategy } = require('@node-saml/passport-saml');
 const {
   getBalanceConfig,
@@ -190,13 +190,6 @@ function createSamlCallback(existingUsersOnly = false) {
       const userEmail = getEmail(profile) || '';
 
       const baseConfig = await getAppConfig({ baseOnly: true });
-      if (!isEmailDomainAllowed(userEmail, baseConfig?.registration?.allowedDomains)) {
-        logger.error(
-          `[SAML Strategy] Authentication blocked - email domain not allowed [Email: ${userEmail}]`,
-        );
-        return done(null, false, { message: 'Email domain not allowed' });
-      }
-
       let user = await findUser({ samlId: profile.nameID });
       logger.info(
         `[samlStrategy] User ${user ? 'found' : 'not found'} with SAML ID: ${profile.nameID}`,
@@ -216,16 +209,9 @@ function createSamlCallback(existingUsersOnly = false) {
         });
       }
 
-      const appConfig = user?.tenantId
+      let appConfig = user?.tenantId
         ? await resolveAppConfigForUser(getAppConfig, user)
         : baseConfig;
-
-      if (!isEmailDomainAllowed(userEmail, appConfig?.registration?.allowedDomains)) {
-        logger.error(
-          `[SAML Strategy] Authentication blocked - email domain not allowed [Email: ${userEmail}]`,
-        );
-        return done(null, false, { message: 'Email domain not allowed' });
-      }
 
       const fullName = getFullName(profile);
 
@@ -239,6 +225,15 @@ function createSamlCallback(existingUsersOnly = false) {
             `[samlStrategy] Admin auth blocked - user does not exist [Email: ${userEmail}]`,
           );
           return done(null, false, { message: 'User does not exist' });
+        }
+
+        const tenantId = getTenantId();
+        appConfig = await getAppConfig(tenantId ? { tenantId } : {});
+        if (!isEmailDomainAllowed(userEmail, appConfig?.registration?.allowedDomains)) {
+          logger.error(
+            `[SAML Strategy] Registration blocked - email domain not allowed [Email: ${userEmail}]`,
+          );
+          return done(null, false, { message: 'Email domain not allowed' });
         }
 
         user = {

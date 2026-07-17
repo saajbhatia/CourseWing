@@ -6,16 +6,16 @@ import {
   LEARNLIGHT_READ_MATERIAL,
   LEARNLIGHT_SEARCH_MATERIALS,
   LEARNLIGHT_SEND_FEEDBACK,
+  learnLightToolDescriptions,
+  courseIdDescription,
+  requiredCourseIdDescription,
+  assignmentFilterDescription,
 } from './tools';
-
-const courseIdDescription =
-  "Canvas course ID. Use the ID from the conversation's course context when present; omit to cover all of the student's current courses.";
 
 export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> = {
   [LEARNLIGHT_GET_ASSIGNMENTS]: {
     name: LEARNLIGHT_GET_ASSIGNMENTS,
-    description:
-      "Get the student's Canvas assignments plus a gradeSummary with the official current course score and assignment-group weights (e.g. Tests 75%). Each assignment has due date, points, submission status, score/grade, and its grading group. Detailed results (withDescriptions=true, or automatic when ≤3 assignments match) also include the full instructions with linked files, the grading rubric with the student's per-criterion earned points/rating and any teacher comments, teacher feedback on the submission, and the student's own submitted work (text-entry excerpt with a materialId for the full text, uploaded files readable via learnlight_read_material, or a submitted URL). Use for questions about homework, deadlines, grades, grade weighting, what an assignment requires, how a graded assignment was scored, or what the student turned in — narrow with query to get the full breakdown for one assignment.",
+    description: learnLightToolDescriptions[LEARNLIGHT_GET_ASSIGNMENTS],
     schema: {
       type: 'object',
       properties: {
@@ -25,9 +25,8 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
         },
         filter: {
           type: 'string',
-          enum: ['upcoming', 'past', 'undated', 'all'],
-          description:
-            'Which assignments to return. Defaults to upcoming (soonest first); past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.',
+          enum: ['upcoming', 'past', 'graded', 'undated', 'all'],
+          description: assignmentFilterDescription,
         },
         query: {
           type: 'string',
@@ -59,8 +58,7 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
   },
   [LEARNLIGHT_GET_MASTERY]: {
     name: LEARNLIGHT_GET_MASTERY,
-    description:
-      "Get the student's Canvas Learning Mastery gradebook: each learning outcome/standard (e.g. \"Analyzing and interpreting data\") with the student's current score, the mastery threshold, a rating on the course's scale (Exemplary/Accomplished/Developing…), how many times it was assessed, and the most recent assessment. Use for questions about learning mastery, outcomes, standards, skills, or which areas the student is strongest/weakest in. Courses without published outcomes return an empty list — then infer strengths from assignment scores instead.",
+    description: learnLightToolDescriptions[LEARNLIGHT_GET_MASTERY],
     schema: {
       type: 'object',
       properties: {
@@ -74,14 +72,13 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
   },
   [LEARNLIGHT_GET_MODULES]: {
     name: LEARNLIGHT_GET_MODULES,
-    description:
-      'Get the course syllabus (when posted) and the structure of a Canvas course: its modules/units in order, with the items (pages, files, assignments) inside each. Use for syllabus questions, "what\'s in Unit 3", or "what does this class cover".',
+    description: learnLightToolDescriptions[LEARNLIGHT_GET_MODULES],
     schema: {
       type: 'object',
       properties: {
         canvasCourseId: {
           type: 'integer',
-          description: "Canvas course ID (from the conversation's course context).",
+          description: requiredCourseIdDescription,
         },
       },
       required: ['canvasCourseId'],
@@ -90,8 +87,7 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
   },
   [LEARNLIGHT_SEARCH_MATERIALS]: {
     name: LEARNLIGHT_SEARCH_MATERIALS,
-    description:
-      'Full-text search across synced Canvas course content: files (study guides, readings, handouts), Canvas pages (unit overviews, lessons), syllabi, and the student\'s own submitted work (kind "submission"). Returns matching excerpts with a materialId for learnlight_read_material. Use before answering questions that should be grounded in the course\'s own materials.',
+    description: learnLightToolDescriptions[LEARNLIGHT_SEARCH_MATERIALS],
     schema: {
       type: 'object',
       properties: {
@@ -116,8 +112,7 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
   },
   [LEARNLIGHT_READ_MATERIAL]: {
     name: LEARNLIGHT_READ_MATERIAL,
-    description:
-      'Read the extracted text of a synced Canvas material (file, page, syllabus, or the student\'s own submission), one page (~4000 characters) at a time. Use after learnlight_search_materials when an excerpt is not enough, or when the student asks about a whole document — including their own submitted essay or file (submission materialIds appear in learnlight_get_assignments detail results). For a course file, the materialId is "<courseId>:file:<canvasFileId>". Check totalPages to read further pages. Results may include a links array of documents referenced by the material — file links are readable via their canvasFileId, and external links carry a url you can give the student directly.',
+    description: learnLightToolDescriptions[LEARNLIGHT_READ_MATERIAL],
     schema: {
       type: 'object',
       properties: {
@@ -138,25 +133,19 @@ export const learnLightToolDefinitions: Record<string, ToolRegistryDefinition> =
   },
   [LEARNLIGHT_SEND_FEEDBACK]: {
     name: LEARNLIGHT_SEND_FEEDBACK,
-    description:
-      "Send the student's feedback ABOUT LEARNLIGHT ITSELF (this AI tutor app) to the LearnLight team: bug reports, feature ideas, confusing behavior, praise, complaints about the app. Use when the student expresses feedback about the app — not about their coursework, teachers, or grades. Send it right away with their feedback as the message; the result will tell you what to say next.",
+    description: learnLightToolDescriptions[LEARNLIGHT_SEND_FEEDBACK],
     schema: {
       type: 'object',
       properties: {
         message: {
           type: 'string',
-          description:
-            "The student's feedback in their own words (lightly cleaned up). Required when sending new feedback; omit on a shareChat-only follow-up call.",
+          maxLength: 10000,
+          description: "The student's feedback in their own words (lightly cleaned up).",
         },
         category: {
           type: 'string',
           enum: ['bug', 'idea', 'praise', 'other'],
           description: 'What kind of feedback this is.',
-        },
-        shareChat: {
-          type: 'boolean',
-          description:
-            'Set true ONLY after the student explicitly agrees to share this chat with the team. Call with shareChat=true and no message to attach the chat to feedback already sent.',
         },
       },
     },

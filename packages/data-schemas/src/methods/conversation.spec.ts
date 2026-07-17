@@ -72,6 +72,8 @@ const saveConvo = (...args: Parameters<ConversationMethods['saveConvo']>) =>
   methods.saveConvo(...args) as Promise<IConversation | null>;
 const getConvo = (...args: Parameters<ConversationMethods['getConvo']>) =>
   methods.getConvo(...args);
+const copyConvoCanvasScope = (...args: Parameters<ConversationMethods['copyConvoCanvasScope']>) =>
+  methods.copyConvoCanvasScope(...args);
 const getConvoRetention = (...args: Parameters<ConversationMethods['getConvoRetention']>) =>
   methods.getConvoRetention(...args);
 const getConvoTitle = (...args: Parameters<ConversationMethods['getConvoTitle']>) =>
@@ -388,6 +390,54 @@ describe('Conversation Operations', () => {
       expect(new Date(firstSave?.createdAt ?? 0).toISOString()).toBe(firstAnchor.toISOString());
       expect(new Date(secondSave?.createdAt ?? 0).toISOString()).toBe(firstAnchor.toISOString());
       expect(secondSave?.title).toBe('Updated title');
+    });
+
+    it('derives Canvas scope only on insert and keeps both scope fields immutable', async () => {
+      const firstAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+      const secondAccountKey = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+
+      await saveConvo(
+        mockCtx,
+        {
+          ...mockConversationData,
+          promptPrefix: 'Canvas course ID: 42',
+          canvasCourseId: 999,
+          canvasAccountKey: secondAccountKey,
+        },
+        { canvasAccountKey: firstAccountKey },
+      );
+
+      let persisted = await Conversation.findOne({
+        conversationId: mockConversationData.conversationId,
+        user: mockCtx.userId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(persisted?.canvasCourseId).toBe(42);
+      expect(persisted?.canvasAccountKey).toBe(firstAccountKey);
+
+      await saveConvo(
+        mockCtx,
+        {
+          ...mockConversationData,
+          promptPrefix: 'Canvas course ID: 99',
+          canvasCourseId: 99,
+          canvasAccountKey: secondAccountKey,
+        },
+        {
+          canvasAccountKey: secondAccountKey,
+          unsetFields: { canvasCourseId: 1, canvasAccountKey: 1 },
+        },
+      );
+
+      persisted = await Conversation.findOne({
+        conversationId: mockConversationData.conversationId,
+        user: mockCtx.userId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(persisted?.canvasCourseId).toBe(42);
+      expect(persisted?.canvasAccountKey).toBe(firstAccountKey);
     });
   });
 
@@ -867,6 +917,124 @@ describe('Conversation Operations', () => {
     it('should return null if conversation not found', async () => {
       const result = await getConvo('user123', 'non-existent-id');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('copyConvoCanvasScope', () => {
+    it('copies complete immutable scope to a fresh same-user target and cannot overwrite it', async () => {
+      const sourceConversationId = uuidv4();
+      const targetConversationId = uuidv4();
+      const canvasAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+
+      await saveConvo(
+        mockCtx,
+        {
+          conversationId: sourceConversationId,
+          endpoint: EModelEndpoint.openAI,
+          promptPrefix: 'Canvas course ID: 42',
+        },
+        { canvasAccountKey },
+      );
+      await methods.bulkSaveConvos([
+        {
+          conversationId: targetConversationId,
+          user: mockCtx.userId,
+          endpoint: EModelEndpoint.openAI,
+          canvasCourseId: 999,
+          canvasAccountKey: 'bbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      ]);
+
+      const beforeCopy = await Conversation.findOne({
+        user: mockCtx.userId,
+        conversationId: targetConversationId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(beforeCopy?.canvasCourseId).toBeUndefined();
+      expect(beforeCopy?.canvasAccountKey).toBeUndefined();
+
+      await expect(
+        copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
+      ).resolves.toBe(true);
+
+      const copied = await Conversation.findOne({
+        user: mockCtx.userId,
+        conversationId: targetConversationId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(copied?.canvasCourseId).toBe(42);
+      expect(copied?.canvasAccountKey).toBe(canvasAccountKey);
+      await expect(
+        copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
+      ).rejects.toThrow('fresh unscoped conversation');
+    });
+
+    it('does not read a source or write a target outside the supplied user scope', async () => {
+      const otherUser = 'other-user';
+      const sourceConversationId = uuidv4();
+      const targetConversationId = uuidv4();
+      const ownedSourceConversationId = uuidv4();
+      const otherTargetConversationId = uuidv4();
+
+      await saveConvo(
+        { ...mockCtx, userId: otherUser },
+        {
+          conversationId: sourceConversationId,
+          endpoint: EModelEndpoint.openAI,
+          promptPrefix: 'Canvas course ID: 77',
+        },
+        { canvasAccountKey: 'cccccccccccccccccccccccc' },
+      );
+      await methods.bulkSaveConvos([
+        {
+          conversationId: targetConversationId,
+          user: mockCtx.userId,
+          endpoint: EModelEndpoint.openAI,
+        },
+      ]);
+
+      await expect(
+        copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
+      ).resolves.toBe(false);
+      const target = await Conversation.findOne({
+        user: mockCtx.userId,
+        conversationId: targetConversationId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(target?.canvasCourseId).toBeUndefined();
+      expect(target?.canvasAccountKey).toBeUndefined();
+
+      await saveConvo(
+        mockCtx,
+        {
+          conversationId: ownedSourceConversationId,
+          endpoint: EModelEndpoint.openAI,
+          promptPrefix: 'Canvas course ID: 88',
+        },
+        { canvasAccountKey: 'dddddddddddddddddddddddd' },
+      );
+      await methods.bulkSaveConvos([
+        {
+          conversationId: otherTargetConversationId,
+          user: otherUser,
+          endpoint: EModelEndpoint.openAI,
+        },
+      ]);
+
+      await expect(
+        copyConvoCanvasScope(mockCtx.userId, ownedSourceConversationId, otherTargetConversationId),
+      ).rejects.toThrow('target is missing');
+      const otherTarget = await Conversation.findOne({
+        user: otherUser,
+        conversationId: otherTargetConversationId,
+      })
+        .select('+canvasAccountKey')
+        .lean<IConversation>();
+      expect(otherTarget?.canvasCourseId).toBeUndefined();
+      expect(otherTarget?.canvasAccountKey).toBeUndefined();
     });
   });
 
@@ -1436,6 +1604,51 @@ describe('Conversation Operations', () => {
       expect(result?.conversations).toHaveLength(25);
       expect(result?.nextCursor).toBeNull(); // No next page
     });
+
+    it('should filter and paginate conversations by Canvas course id', async () => {
+      const baseTime = new Date('2026-01-01T00:00:00.000Z');
+      for (let i = 0; i < 30; i++) {
+        const updatedAt = new Date(baseTime.getTime() - i * 60000);
+        await Conversation.collection.insertOne({
+          conversationId: uuidv4(),
+          user: 'user123',
+          title: `Course conversation ${i}`,
+          endpoint: EModelEndpoint.openAI,
+          canvasCourseId: i < 27 ? 42 : 99,
+          canvasAccountKey: i === 26 ? 'bbbbbbbbbbbbbbbbbbbbbbbb' : 'aaaaaaaaaaaaaaaaaaaaaaaa',
+          expiredAt: null,
+          isArchived: false,
+          createdAt: updatedAt,
+          updatedAt,
+        });
+      }
+
+      const page1 = await getConvosByCursor('user123', {
+        canvasCourseId: 42,
+        canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        limit: 25,
+      });
+      const page2 = await getConvosByCursor('user123', {
+        canvasCourseId: 42,
+        canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        limit: 25,
+        cursor: page1.nextCursor,
+      });
+
+      expect(page1.conversations).toHaveLength(25);
+      expect(page2.conversations).toHaveLength(1);
+      expect(
+        [...page1.conversations, ...page2.conversations].every(
+          (conversation: IConversation) => conversation.canvasCourseId === 42,
+        ),
+      ).toBe(true);
+      expect(
+        [...page1.conversations, ...page2.conversations].some(
+          (conversation: IConversation) =>
+            conversation.conversationId && conversation.title === 'Course conversation 26',
+        ),
+      ).toBe(false);
+    });
   });
 
   describe('tenantId stripping', () => {
@@ -1481,6 +1694,26 @@ describe('Conversation Operations', () => {
       expect(doc).not.toBeNull();
       expect(doc?.title).toBe('Updated');
       expect(doc?.tenantId).toBe('real-tenant');
+    });
+
+    it('bulkSaveConvos should not inject either internal Canvas scope field', async () => {
+      const conversationId = uuidv4();
+
+      await methods.bulkSaveConvos([
+        {
+          conversationId,
+          user: 'user123',
+          title: 'Imported Canvas chat',
+          endpoint: EModelEndpoint.openAI,
+          canvasCourseId: 42,
+          canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      ]);
+
+      const doc = await Conversation.findOne({ conversationId }).select('+canvasAccountKey').lean();
+      expect(doc).not.toBeNull();
+      expect(doc?.canvasCourseId).toBeUndefined();
+      expect(doc?.canvasAccountKey).toBeUndefined();
     });
 
     it('bulkSaveConvos refreshes stats for cloned project conversations', async () => {

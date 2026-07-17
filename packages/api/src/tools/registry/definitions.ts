@@ -1,5 +1,6 @@
 import { WebSearchToolDefinition, CalculatorToolDefinition } from '@librechat/agents';
 import { learnLightToolDefinitions } from '~/learnlight/definitions';
+import { isLearnLightEnabled } from '~/learnlight/config';
 import { geminiToolkit } from '~/tools/toolkits/gemini';
 import { oaiToolkit } from '~/tools/toolkits/oai';
 
@@ -475,18 +476,18 @@ const agentToolDefinitions: Record<string, ToolRegistryDefinition> = {
 };
 
 export function getToolDefinition(toolName: string): ToolRegistryDefinition | undefined {
-  return (
-    toolDefinitions[toolName] ??
-    agentToolDefinitions[toolName] ??
-    learnLightToolDefinitions[toolName]
-  );
+  const standardDefinition = toolDefinitions[toolName] ?? agentToolDefinitions[toolName];
+  if (standardDefinition) {
+    return standardDefinition;
+  }
+  return isLearnLightEnabled() ? learnLightToolDefinitions[toolName] : undefined;
 }
 
 export function getAllToolDefinitions(): ToolRegistryDefinition[] {
   return [
     ...Object.values(toolDefinitions),
     ...Object.values(agentToolDefinitions),
-    ...Object.values(learnLightToolDefinitions),
+    ...(isLearnLightEnabled() ? Object.values(learnLightToolDefinitions) : []),
   ];
 }
 

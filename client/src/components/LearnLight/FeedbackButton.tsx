@@ -3,15 +3,15 @@ import { MessageSquareHeart } from 'lucide-react';
 import { Button, Checkbox, OGDialog, DialogTemplate, useToastContext } from '@librechat/client';
 import { Constants } from 'librechat-data-provider';
 import { useSendFeedbackMutation } from '~/data-provider/LearnLight';
-import { useAuthContext, useLocalize } from '~/hooks';
+import { useLocalize } from '~/hooks';
 import { useChatContext } from '~/Providers';
 import { cn } from '~/utils';
+import { pillButtonClassName } from './utils';
 
 export default function FeedbackButton() {
   const localize = useLocalize();
-  const { user } = useAuthContext();
   const { showToast } = useToastContext();
-  const { conversation } = useChatContext();
+  const { conversation, latestMessageId } = useChatContext();
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [shareChat, setShareChat] = useState(false);
@@ -21,25 +21,33 @@ export default function FeedbackButton() {
     conversation?.conversationId && conversation.conversationId !== Constants.NEW_CONVO
       ? conversation.conversationId
       : null;
+  const canShareChat = conversationId != null && latestMessageId != null;
 
   const handleSubmit = () => {
     if (!message.trim() || sendFeedback.isLoading) {
       return;
     }
+    const willShareChat = shareChat && canShareChat;
     sendFeedback.mutate(
       {
         message: message.trim(),
-        shareChat,
-        conversationId: shareChat ? conversationId : null,
-        userName: user?.name || user?.username || null,
-        userEmail: user?.email || null,
+        shareChat: willShareChat,
+        conversationId: willShareChat ? conversationId : null,
+        targetMessageId: willShareChat ? latestMessageId : null,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setIsOpen(false);
           setMessage('');
           setShareChat(false);
-          showToast({ message: localize('com_ui_app_feedback_thanks') });
+          if (result.warning === 'chat_share_failed') {
+            showToast({
+              message: localize('com_ui_app_feedback_chat_share_failed'),
+              status: 'warning',
+            });
+          } else {
+            showToast({ message: localize('com_ui_app_feedback_thanks') });
+          }
         },
         onError: () => {
           showToast({ message: localize('com_ui_app_feedback_error'), status: 'error' });
@@ -54,12 +62,7 @@ export default function FeedbackButton() {
         type="button"
         aria-label={localize('com_ui_app_feedback')}
         onClick={() => setIsOpen(true)}
-        className={cn(
-          'group relative inline-flex items-center justify-center gap-1.5',
-          'rounded-full border border-border-medium text-sm font-medium',
-          'size-9 max-w-fit p-2 transition-all md:w-full md:p-3',
-          'bg-transparent shadow-sm hover:bg-surface-hover hover:shadow-md active:shadow-inner',
-        )}
+        className={pillButtonClassName}
       >
         <span className="icon-md text-text-primary">
           <MessageSquareHeart className="icon-md" aria-hidden="true" />
@@ -80,6 +83,7 @@ export default function FeedbackButton() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={4}
+                maxLength={10000}
                 placeholder={localize('com_ui_app_feedback_placeholder')}
                 className="w-full resize-none rounded-lg border border-border-medium bg-transparent p-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-ring"
               />
@@ -89,17 +93,14 @@ export default function FeedbackButton() {
                   aria-labelledby="learnlight-feedback-share-label"
                   checked={shareChat}
                   onCheckedChange={(checked) => setShareChat(checked === true)}
-                  disabled={conversationId == null}
+                  disabled={!canShareChat}
                 />
                 <label
                   id="learnlight-feedback-share-label"
                   htmlFor="learnlight-feedback-share"
-                  className={cn(
-                    'text-sm text-text-primary',
-                    conversationId == null && 'text-text-tertiary',
-                  )}
+                  className={cn('text-sm text-text-primary', !canShareChat && 'text-text-tertiary')}
                 >
-                  {conversationId == null
+                  {!canShareChat
                     ? localize('com_ui_app_feedback_share_chat_unavailable')
                     : localize('com_ui_app_feedback_share_chat')}
                 </label>

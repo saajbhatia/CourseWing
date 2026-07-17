@@ -44,8 +44,14 @@ const hasPriorSession = () => localStorage.getItem(PRIOR_SESSION_KEY) != null;
 
 /** Routes guests may view without a session; sending a message still requires login. */
 const isGuestViewableRoute = () => {
-  const path = window.location.pathname;
-  return (path === '/' || path.includes('/c/')) && !hasPriorSession();
+  const rawPath = window.location.pathname;
+  const baseUrl = apiBaseUrl();
+  const path =
+    baseUrl && (rawPath === baseUrl || rawPath.startsWith(`${baseUrl}/`))
+      ? rawPath.slice(baseUrl.length) || '/'
+      : rawPath;
+  const isPublicCourse = /^\/courses\/[1-9]\d*$/u.test(path);
+  return isPublicCourse || ((path === '/' || path === '/c/new') && !hasPriorSession());
 };
 
 const AuthContextProvider = ({

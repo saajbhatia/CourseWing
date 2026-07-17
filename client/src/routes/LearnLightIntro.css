@@ -131,8 +131,7 @@ body:has(.ll-page) button[aria-label='Open React Query Devtools'] {
 }
 
 .ll-nav-cta svg,
-.ll-button svg,
-.ll-view-label svg {
+.ll-button svg {
   width: 16px;
   height: 16px;
   stroke-width: 1.8;

@@ -21,6 +21,7 @@ import type { TInterfaceConfig, TEndpointsConfig } from 'librechat-data-provider
 import type { NavLink } from '~/common';
 import {
   useAgentCapabilities,
+  useAuthContext,
   useMCPServerManager,
   useGetAgentsConfig,
   useHasAccess,
@@ -52,6 +53,7 @@ export default function useSideNavLinks({
   endpointsConfig: TEndpointsConfig;
   includeHidePanel?: boolean;
 }) {
+  const { isAuthenticated } = useAuthContext();
   const hasAccessToPrompts = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
@@ -170,13 +172,15 @@ export default function useSideNavLinks({
       });
     }
 
-    links.push({
-      title: 'com_sidepanel_attach_files',
-      label: '',
-      icon: AttachmentIcon,
-      id: 'files',
-      Component: FilesPanel,
-    });
+    if (isAuthenticated) {
+      links.push({
+        title: 'com_sidepanel_attach_files',
+        label: '',
+        icon: AttachmentIcon,
+        id: 'files',
+        Component: FilesPanel,
+      });
+    }
 
     if (
       interfaceConfig.parameters === true &&
@@ -220,6 +224,7 @@ export default function useSideNavLinks({
   }, [
     endpoint,
     endpointsConfig,
+    isAuthenticated,
     keyProvided,
     hasAccessToAgents,
     hasAccessToCreateAgents,

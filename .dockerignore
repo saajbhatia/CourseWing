@@ -5,6 +5,10 @@
 **/.DS_Store
 **/.vscode
 **/node_modules
+**/coverage
+**/dist
+**/junit.xml
+**/*.log
 
 # Specific patterns to ignore
 data-node
@@ -12,6 +16,7 @@ meili_data*
 librechat*
 Dockerfile*
 docs
+client/public/images/**
 
 # Ignore all hidden files
 .*

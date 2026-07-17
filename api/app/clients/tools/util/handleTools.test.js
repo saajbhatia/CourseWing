@@ -10,8 +10,23 @@ const mockGetMCPServerTools = jest.fn();
 const mockCreateMCPTool = jest.fn();
 const mockCreateMCPTools = jest.fn();
 const mockGetServerConfig = jest.fn();
+const mockCreateLearnLightTool = jest.fn((tool, options) => ({
+  name: tool,
+  tenantId: options.tenantId,
+}));
+const mockGetLearnLightCanvasIdentity = jest.fn();
+
+jest.mock('@librechat/api', () => ({
+  ...jest.requireActual('@librechat/api'),
+  createLearnLightTool: (...args) => mockCreateLearnLightTool(...args),
+  isLearnLightEnabled: jest.fn(() => true),
+}));
 
 jest.mock('~/server/services/PluginService', () => mockPluginService);
+
+jest.mock('~/server/services/LearnLight', () => ({
+  getLearnLightCanvasIdentity: (...args) => mockGetLearnLightCanvasIdentity(...args),
+}));
 
 jest.mock('~/server/services/Config', () => ({
   getAppConfig: jest.fn().mockResolvedValue({
@@ -302,6 +317,62 @@ describe('Tool Handlers', () => {
       const structuredTool = await toolFunctions['stable-diffusion']();
       expect(structuredTool).toBeInstanceOf(StructuredSD);
       delete process.env.SD_WEBUI_URL;
+    });
+
+    it('keeps course-chat tools on the tenant verified by middleware if the mapping changes', async () => {
+      mockGetLearnLightCanvasIdentity.mockResolvedValue({
+        tenantId: 'tenant-after-account-switch',
+        canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+      });
+      const req = {
+        user: {
+          id: fakeUser._id.toString(),
+          name: 'Fake User',
+          email: 'fakeuser@example.com',
+        },
+        learnLightCanvasTenantId: 'tenant-verified-before-switch',
+      };
+
+      const toolMap = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: ['learnlight_get_assignments'],
+        returnMap: true,
+        options: { req },
+      });
+      const tool = await toolMap.learnlight_get_assignments();
+
+      expect(mockGetLearnLightCanvasIdentity).not.toHaveBeenCalled();
+      expect(mockCreateLearnLightTool).toHaveBeenCalledWith('learnlight_get_assignments', {
+        tenantId: 'tenant-verified-before-switch',
+        userName: 'Fake User',
+        userEmail: 'fakeuser@example.com',
+      });
+      expect(tool).toEqual({
+        name: 'learnlight_get_assignments',
+        tenantId: 'tenant-verified-before-switch',
+      });
+    });
+
+    it('resolves the current Canvas mapping for a general-chat LearnLight tool', async () => {
+      mockGetLearnLightCanvasIdentity.mockResolvedValue({
+        tenantId: 'tenant-current',
+        canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+      });
+      const userId = fakeUser._id.toString();
+
+      const toolMap = await loadTools({
+        user: userId,
+        tools: ['learnlight_get_assignments'],
+        returnMap: true,
+        options: { req: { user: { id: userId } } },
+      });
+      await toolMap.learnlight_get_assignments();
+
+      expect(mockGetLearnLightCanvasIdentity).toHaveBeenCalledWith(userId);
+      expect(mockCreateLearnLightTool).toHaveBeenCalledWith(
+        'learnlight_get_assignments',
+        expect.objectContaining({ tenantId: 'tenant-current' }),
+      );
     });
 
     it('passes request body to chat MCP tool creation and skips stale cache for BODY-scoped servers', async () => {

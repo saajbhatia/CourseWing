@@ -11,24 +11,149 @@ import type {
   LearnLightSearchResponse,
   LearnLightTenantStatus,
 } from './types';
-import { getCanvasServiceUrl } from './config';
+import { getCanvasServiceKey, getCanvasServiceUrl } from './config';
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const CONTEXT_CACHE_TTL_MS = 60_000;
+const MAX_CONTEXT_CACHE_ENTRIES = 500;
 const RECENT_GRADED_LIMIT = 8;
+export const MAX_CANVAS_SERVICE_RESPONSE_BYTES: number = 2 * 1024 * 1024;
 
 const contextCache = new Map<string, { expiresAt: number; value: LearnLightCourseContext }>();
+
+/** Keeps the module-level cache bounded: sweep expired entries, then evict oldest-inserted if still full. */
+function pruneContextCache(): void {
+  if (contextCache.size < MAX_CONTEXT_CACHE_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of contextCache) {
+    if (entry.expiresAt <= now) {
+      contextCache.delete(key);
+    }
+  }
+
+  while (contextCache.size >= MAX_CONTEXT_CACHE_ENTRIES) {
+    const oldestKey = contextCache.keys().next().value;
+    if (oldestKey == null) {
+      break;
+    }
+    contextCache.delete(oldestKey);
+  }
+}
 
 export type LearnLightRequestOptions = {
   tenantId?: string | null;
   method?: 'GET' | 'POST';
   body?: Record<string, unknown>;
+  allowNoTenant?: boolean;
 };
 
+export class CanvasServiceResponseTooLargeError extends Error {
+  readonly code = 'CANVAS_SERVICE_RESPONSE_TOO_LARGE';
+
+  constructor(maxBytes: number, receivedBytes: number) {
+    super(
+      `Canvas service response exceeds the ${maxBytes}-byte safety limit ` +
+        `(received at least ${receivedBytes} bytes)`,
+    );
+    this.name = 'CanvasServiceResponseTooLargeError';
+  }
+}
+
+async function cancelResponseBody(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  try {
+    await body?.cancel();
+  } catch {
+    // Preserve the deterministic size-limit error if cancellation itself fails.
+  }
+}
+
+async function readBoundedResponseText(
+  response: Response,
+  maxBytes = MAX_CANVAS_SERVICE_RESPONSE_BYTES,
+): Promise<string> {
+  const contentLength = response.headers.get('content-length')?.trim();
+  if (contentLength && /^\d+$/.test(contentLength)) {
+    const declaredBytes = Number(contentLength);
+    if (declaredBytes > maxBytes) {
+      await cancelResponseBody(response.body);
+      throw new CanvasServiceResponseTooLargeError(maxBytes, declaredBytes);
+    }
+  }
+
+  if (!response.body) {
+    return '';
+  }
+  if (typeof response.body.getReader !== 'function') {
+    throw new Error('Canvas service returned an unreadable response stream');
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const nextTotalBytes = totalBytes + value.byteLength;
+      if (nextTotalBytes > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Preserve the deterministic size-limit error if cancellation itself fails.
+        }
+        throw new CanvasServiceResponseTooLargeError(maxBytes, nextTotalBytes);
+      }
+
+      chunks.push(value);
+      totalBytes = nextTotalBytes;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Lenient bounded reader for internal Canvas-service JSON: rejects oversized responses
+ * with CanvasServiceResponseTooLargeError, resolves `{}` for empty or non-JSON bodies.
+ */
+export async function readBoundedJson(
+  response: Response,
+  maxBytes: number = MAX_CANVAS_SERVICE_RESPONSE_BYTES,
+): Promise<unknown> {
+  const text = await readBoundedResponseText(response, maxBytes);
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 async function fetchJson<T>(path: string, options?: LearnLightRequestOptions): Promise<T> {
+  if (!options?.tenantId && options?.allowNoTenant !== true) {
+    throw new Error('Canvas account is not connected');
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const headers: Record<string, string> = { Accept: 'application/json' };
+  headers['X-LearnLight-Service-Key'] = getCanvasServiceKey();
   if (options?.tenantId) {
     headers['X-Tenant-Id'] = options.tenantId;
   }
@@ -44,12 +169,15 @@ async function fetchJson<T>(path: string, options?: LearnLightRequestOptions): P
       body: options?.body != null ? JSON.stringify(options.body) : undefined,
     });
 
+    const responseText = await readBoundedResponseText(response);
+
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`LearnLight service responded ${response.status} for ${path}: ${body}`);
+      throw new Error(
+        `LearnLight service responded ${response.status} for ${path}: ${responseText}`,
+      );
     }
 
-    return (await response.json()) as T;
+    return JSON.parse(responseText) as T;
   } finally {
     clearTimeout(timeout);
   }
@@ -75,15 +203,14 @@ export async function getCourseContext(
   ]);
 
   if (gradedWork != null) {
-    value.recentGradedWork = gradedWork.assignments.filter(
-      (assignment) => assignment.score != null,
-    );
+    value.recentGradedWork = gradedWork.assignments;
     value.gradeSummary = gradedWork.gradeSummary;
   }
   if (moduleNames != null) {
     value.moduleNames = moduleNames;
   }
 
+  pruneContextCache();
   contextCache.set(cacheKey, { expiresAt: Date.now() + CONTEXT_CACHE_TTL_MS, value });
   return value;
 }
@@ -115,7 +242,7 @@ async function getRecentGradedWorkSafe(
   try {
     return await getAssignments({
       canvasCourseId,
-      filter: 'past',
+      filter: 'graded',
       limit: RECENT_GRADED_LIMIT,
       tenantId: options?.tenantId,
     });
@@ -261,22 +388,19 @@ export async function readMaterial(params: {
 }
 
 export async function sendFeedback(params: {
-  message?: string;
+  message: string;
   category?: string;
-  shareChat?: boolean;
-  conversationId?: string | null;
   userName?: string | null;
   userEmail?: string | null;
   tenantId?: string | null;
 }): Promise<LearnLightFeedbackResponse> {
   return fetchJson<LearnLightFeedbackResponse>('/api/learnlight/feedback', {
     tenantId: params.tenantId,
+    allowNoTenant: true,
     method: 'POST',
     body: {
       message: params.message,
       category: params.category,
-      shareChat: params.shareChat,
-      conversationId: params.conversationId,
       userName: params.userName,
       userEmail: params.userEmail,
     },
@@ -291,7 +415,9 @@ export async function getTenantStatusSafe(
     return null;
   }
   try {
-    return await fetchJson<LearnLightTenantStatus>(`/api/learnlight/tenants/${tenantId}`);
+    return await fetchJson<LearnLightTenantStatus>(`/api/learnlight/tenants/${tenantId}`, {
+      tenantId,
+    });
   } catch (error) {
     logger.warn(
       `[LearnLight] Failed to fetch tenant status for ${tenantId}: ${
