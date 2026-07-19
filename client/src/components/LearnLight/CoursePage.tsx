@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Spinner, useToastContext } from '@librechat/client';
 import { addDays, format, isSameDay } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, ArrowUp, Files, Sparkles } from 'lucide-react';
+import { request, LEARNLIGHT_LEVEL_LINE } from 'librechat-data-provider';
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import type { LearnLightAssignment } from '~/data-provider/LearnLight';
 import type { LearnLightCourseIdentity } from './utils';
@@ -11,6 +13,7 @@ import {
   useCourseMaterialsQuery,
   useCurrentCoursesQuery,
 } from '~/data-provider/LearnLight';
+import { useGetStartupConfig } from '~/data-provider';
 import { bucketAssignments } from './assignments';
 import {
   getDisplayCourseName,
@@ -23,9 +26,26 @@ import {
   learnlightNow,
 } from './utils';
 import { useLocalize, useNewConvo } from '~/hooks';
+import { useAuthContext } from '~/hooks/AuthContext';
+import TeacherCourseView from './TeacherCourseView';
 import { cn } from '~/utils';
 
 type CourseTab = 'overview' | 'assignments';
+
+type TeacherActivity = {
+  id: string;
+  title: string;
+  type: string;
+  level: 'open' | 'guided' | 'socratic';
+  prompt: string | null;
+  dueAt: string | null;
+};
+
+const ACTIVITY_LEVEL_MARKERS: Record<TeacherActivity['level'], string> = {
+  open: `${LEARNLIGHT_LEVEL_LINE} full`,
+  guided: '',
+  socratic: `${LEARNLIGHT_LEVEL_LINE} hints`,
+};
 
 const pillButtonClassName =
   'shrink-0 rounded-full border border-border-medium px-3.5 py-1 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary';
@@ -110,13 +130,43 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
   const displayName = getDisplayCourseName(course.name);
   const color = getCourseColor(course.canvasCourseId);
 
+  const { data: startupConfig } = useGetStartupConfig();
   const startCourseChat = (options: Parameters<typeof openCourseChat>[3]) => {
-    if (!openCourseChat(navigate, newConversation, course, options)) {
+    const defaultSpec = startupConfig?.modelSpecs?.list?.find((spec) => spec.default)?.name;
+    const merged = { ...(defaultSpec ? { spec: defaultSpec } : {}), ...options };
+    if (!openCourseChat(navigate, newConversation, course, merged)) {
       showToast({
         status: 'error',
         message: localize('com_ui_guest_handoff_error'),
       });
     }
+  };
+
+  const { isAuthenticated } = useAuthContext();
+  const teacherActivities = useQuery(
+    ['llTeacherActivities', course.canvasCourseId],
+    () =>
+      request.get<{ activities: TeacherActivity[] }>(
+        `/api/learnlight/activities?courseId=${course.canvasCourseId}`,
+      ),
+    { enabled: isAuthenticated, staleTime: 60_000, retry: false },
+  );
+
+  const startActivityChat = (activity: TeacherActivity) => {
+    request
+      .post(`/api/learnlight/activities/${encodeURIComponent(activity.id)}/started`, {})
+      .catch(() => undefined);
+    startCourseChat({
+      promptPrefix: [
+        getCoursePrefix(course),
+        `The teacher assigned this activity: ${activity.title}`,
+        activity.prompt ? `Activity details from the teacher: ${activity.prompt}` : '',
+        ACTIVITY_LEVEL_MARKERS[activity.level] ?? '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      greeting: localize('com_ui_teacher_activity_greeting', { name: activity.title }),
+    });
   };
 
   const startAssignmentChat = (assignment: LearnLightAssignment) => {
@@ -239,6 +289,42 @@ function CourseView({ course }: { course: LearnLightCourseIdentity & { name: str
         <div className="min-h-0 flex-1 overflow-y-auto py-3">
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-4">
+              {(teacherActivities.data?.activities.length ?? 0) > 0 && (
+                <div>
+                  <SectionLabel label={localize('com_ui_from_your_teacher')} />
+                  <div className="flex flex-col gap-1.5">
+                    {(teacherActivities.data?.activities ?? []).map((activity) => (
+                      <div
+                        key={activity.id}
+                        className="flex items-center gap-3 rounded-xl border border-border-light px-3.5 py-2.5"
+                      >
+                        <Sparkles
+                          className="h-4 w-4 shrink-0 text-text-secondary"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-text-primary">
+                            {activity.title}
+                          </span>
+                          <span className="block truncate text-xs text-text-tertiary">
+                            {activity.type}
+                            {getDueLabel(localize, activity.dueAt) != null
+                              ? ` · ${getDueLabel(localize, activity.dueAt)}`
+                              : ''}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className={pillButtonClassName}
+                          onClick={() => startActivityChat(activity)}
+                        >
+                          {localize('com_ui_chat')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <SectionLabel label={localize('com_ui_up_next')} />
                 {buckets.upNext.length > 0 ? renderRows(buckets.upNext) : renderEmpty()}
@@ -329,7 +415,13 @@ export default function CoursePage() {
   const parsedId = Number.parseInt(courseId, 10);
   const canvasCourseId = Number.isFinite(parsedId) ? parsedId : null;
 
+  const { isAuthenticated } = useAuthContext();
   const connection = useCanvasConnectionQuery();
+  const teacherMe = useQuery(
+    ['tcMe'],
+    () => request.get<{ isTeacher: boolean }>('/api/learnlight/teacher/me'),
+    { enabled: isAuthenticated, retry: false, staleTime: 300_000 },
+  );
   const {
     data: currentCourses = [],
     isLoading,
@@ -339,6 +431,16 @@ export default function CoursePage() {
   const course = currentCourses.find((item) => item.canvasCourseId === canvasCourseId);
 
   if (connection.data?.connected === true && course != null) {
+    if (teacherMe.data?.isTeacher === true) {
+      return <TeacherCourseView key={course.canvasCourseId} course={course} />;
+    }
+    if (isAuthenticated && teacherMe.isLoading) {
+      return (
+        <main className="flex h-full items-center justify-center bg-surface-primary">
+          <Spinner className="h-5 w-5 text-text-secondary" />
+        </main>
+      );
+    }
     return <CourseView key={course.canvasCourseId} course={course} />;
   }
 

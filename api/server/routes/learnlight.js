@@ -529,4 +529,6 @@ router.post(
   },
 );
 
+router.use(require('./teacher'));
+
 module.exports = router;

@@ -124,9 +124,38 @@ export type CourseChatOptions = {
   promptPrefix: string;
   greeting?: string;
   prompt?: string;
+  /** Model-spec name to pin so query-param settings cannot fall back to a stale last-used model. */
+  spec?: string;
 };
 
-export type CourseChatHandoff = Pick<CourseChatOptions, 'promptPrefix' | 'prompt'>;
+export type CourseChatHandoff = Pick<CourseChatOptions, 'promptPrefix' | 'prompt' | 'spec'>;
+
+export const LEARNLIGHT_TEACHER_ASSISTANT_LINE = 'LearnLight teacher assistant';
+
+/** Opens a class-assistant chat for a teacher: real course chat with the teacher marker. */
+export function openTeacherAssistantChat(
+  navigate: NavigateFunction,
+  newConversation: NewConversationCall,
+  course: LearnLightCourseIdentity & { name: string },
+  options: { spec?: string; prompt?: string } = {},
+): boolean {
+  const promptPrefix = [
+    `Canvas course ID: ${course.canvasCourseId}`,
+    `Current Canvas course: ${prefixValue(course.name)}`,
+    `${LEARNLIGHT_TEACHER_ASSISTANT_LINE}: class`,
+    'The course teacher is asking about their class.',
+  ].join('\n');
+  return openCourseChat(navigate, newConversation, course, {
+    promptPrefix,
+    ...(options.spec ? { spec: options.spec } : {}),
+    ...(options.prompt
+      ? { prompt: options.prompt }
+      : {
+          greeting:
+            'Ask about your class — how students use the tutor, what to review, or draft an activity.',
+        }),
+  });
+}
 
 export function openCourseChat(
   navigate: NavigateFunction,
@@ -146,6 +175,7 @@ export function openCourseChat(
     handoffId = createCourseChatHandoff({
       promptPrefix: options.promptPrefix,
       ...(options.prompt ? { prompt: options.prompt } : {}),
+      ...(options.spec ? { spec: options.spec } : {}),
     });
   } catch {
     clearPendingCourse();
@@ -210,9 +240,13 @@ export function consumeCourseChatHandoff(handoffId: string | null): CourseChatHa
     ) {
       return null;
     }
+    if (parsed.spec != null && (typeof parsed.spec !== 'string' || parsed.spec.length > 256)) {
+      return null;
+    }
     return {
       promptPrefix: parsed.promptPrefix,
       ...(parsed.prompt ? { prompt: parsed.prompt } : {}),
+      ...(parsed.spec ? { spec: parsed.spec } : {}),
     };
   } catch {
     return null;

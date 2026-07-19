@@ -1,12 +1,25 @@
 import { useMemo } from 'react';
 import { format } from 'date-fns';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, Plus } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import {
+  Plus,
+  Users,
+  Shield,
+  ArrowLeft,
+  BookOpen,
+  Sparkles,
+  BarChart3,
+  FolderPlus,
+  MessageCircle,
+} from 'lucide-react';
 import { useToastContext } from '@librechat/client';
+import { request } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
-import { useConversationsInfiniteQuery } from '~/data-provider';
+import { useConversationsInfiniteQuery, useGetStartupConfig } from '~/data-provider';
 import { useCurrentCoursesQuery } from '~/data-provider/LearnLight';
 import {
+  openTeacherAssistantChat,
   getDisplayCourseName,
   clearPendingCourse,
   getCourseInitial,
@@ -14,6 +27,7 @@ import {
   getCourseColor,
   openCourseChat,
 } from './utils';
+import { useAuthContext } from '~/hooks/AuthContext';
 import { useCourseChatMap } from './chats';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { cn } from '~/utils';
@@ -43,8 +57,28 @@ export default function CoursePanel({
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const { newConversation } = useNewConvo();
   const { conversationId } = useParams();
+  const { isAuthenticated } = useAuthContext();
+  const { data: startupConfig } = useGetStartupConfig();
+  const teacherMe = useQuery(
+    ['tcMe'],
+    () => request.get<{ isTeacher: boolean }>('/api/learnlight/teacher/me'),
+    { enabled: isAuthenticated, retry: false, staleTime: 300_000 },
+  );
+  const isTeacher = teacherMe.data?.isTeacher === true;
+  const teacherQueue = useQuery(
+    ['tcQueue', canvasCourseId],
+    () =>
+      request.get<{ queue: { flagStatus: string }[] }>(
+        `/api/learnlight/teacher/courses/${canvasCourseId}/queue`,
+      ),
+    { enabled: isTeacher, staleTime: 30_000, refetchOnWindowFocus: false },
+  );
+  const pendingFlags = (teacherQueue.data?.queue ?? []).filter(
+    (item) => item.flagStatus === 'pending',
+  ).length;
   const chatMap = useCourseChatMap();
   const { data: currentCourses = [] } = useCurrentCoursesQuery();
   const {
@@ -111,6 +145,55 @@ export default function CoursePanel({
   const displayName = course != null ? getDisplayCourseName(course.name) : '';
   const color = getCourseColor(canvasCourseId);
 
+  const onCoursePage = location.pathname === `/courses/${canvasCourseId}`;
+  const activeTab = onCoursePage
+    ? (new URLSearchParams(location.search).get('tab') ?? 'pulse')
+    : null;
+  const goTeacherTab = (tab: string) => {
+    navigate(
+      tab === 'pulse' ? `/courses/${canvasCourseId}` : `/courses/${canvasCourseId}?tab=${tab}`,
+    );
+    toggleNav();
+  };
+  const startAssistantChat = () => {
+    if (course == null) {
+      return;
+    }
+    const defaultSpec = startupConfig?.modelSpecs?.list?.find((spec) => spec.default)?.name;
+    const opened = openTeacherAssistantChat(navigate, newConversation, course, {
+      ...(defaultSpec ? { spec: defaultSpec } : {}),
+    });
+    if (opened) {
+      toggleNav();
+    } else {
+      showToast({ status: 'error', message: localize('com_ui_guest_handoff_error') });
+    }
+  };
+  const teacherNav: Array<{
+    key: string;
+    label: string;
+    Icon: typeof BarChart3;
+    badge?: number;
+    onClick?: () => void;
+  }> = [
+    { key: 'pulse', label: localize('com_ui_teacher_class_pulse'), Icon: BarChart3 },
+    { key: 'students', label: localize('com_ui_teacher_students'), Icon: Users },
+    { key: 'assign', label: localize('com_ui_teacher_assign'), Icon: FolderPlus },
+    {
+      key: 'assistant',
+      label: localize('com_ui_teacher_assistant'),
+      Icon: Sparkles,
+      onClick: startAssistantChat,
+    },
+    {
+      key: 'queue',
+      label: localize('com_ui_teacher_review_queue'),
+      Icon: Shield,
+      badge: pendingFlags,
+    },
+    { key: 'levels', label: localize('com_ui_teacher_help_levels'), Icon: BookOpen },
+  ];
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 pb-3 pt-2 text-sm">
       <button
@@ -137,6 +220,38 @@ export default function CoursePanel({
           </span>
           <span className="min-w-0 truncate font-semibold text-text-primary">{displayName}</span>
         </button>
+      )}
+
+      {isTeacher && (
+        <>
+          <div className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+            {localize('com_ui_teacher_class')}
+          </div>
+          <ul className="m-0 list-none p-0">
+            {teacherNav.map((item) => (
+              <li key={item.key} className="list-none">
+                <button
+                  type="button"
+                  onClick={item.onClick ?? (() => goTeacherTab(item.key))}
+                  className={cn(
+                    'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2 text-left font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white',
+                    activeTab === item.key
+                      ? 'bg-surface-active-alt text-text-primary'
+                      : 'text-text-primary hover:bg-surface-active-alt',
+                  )}
+                >
+                  <item.Icon className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.badge ? (
+                    <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <div className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary">

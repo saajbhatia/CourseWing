@@ -18,6 +18,15 @@ const {
   extractCanvasAssignmentId,
 } = require('@librechat/api');
 const { getLearnLightCanvasIdentity } = require('~/server/services/LearnLight');
+const {
+  isTeacherUser,
+  buildCourseRules,
+  getTeacherCourseIds,
+  getCourseAssistance,
+  buildClassReceiptsCard,
+  isTeacherAssistantPrefix,
+  buildTeacherAssistantPrompt,
+} = require('~/server/services/LearnLightTeacher');
 const db = require('~/models');
 
 /**
@@ -41,12 +50,19 @@ async function learnLightContext(req, res, next) {
   const markedLevel = extractAssistanceLevel(promptPrefix);
   const persona = extractPersona(promptPrefix);
 
-  const sections = [
-    stripLearnLightBlocks(promptPrefix ?? ''),
-    markedLevel == null ? buildLearningDefault() : buildAssistancePolicy(markedLevel),
-  ];
+  const teacherAssistant = isTeacherAssistantPrefix(promptPrefix);
+  if (teacherAssistant && !(await isTeacherUser(req.user))) {
+    return res.status(403).json({ message: 'Teacher access required' });
+  }
 
-  if (persona != null) {
+  const sections = teacherAssistant
+    ? [stripLearnLightBlocks(promptPrefix ?? ''), buildTeacherAssistantPrompt()]
+    : [
+        stripLearnLightBlocks(promptPrefix ?? ''),
+        markedLevel == null ? buildLearningDefault() : buildAssistancePolicy(markedLevel),
+      ];
+
+  if (!teacherAssistant && persona != null) {
     sections.push(buildPersonaPrompt(persona));
   }
 
@@ -127,20 +143,42 @@ async function learnLightContext(req, res, next) {
       // the user's mutable tenant mapping again after this scope check.
       req.learnLightCanvasTenantId = identity.tenantId;
       req.learnLightCanvasAccountKey = identity.canvasAccountKey;
-      const canvasAssignmentId = extractCanvasAssignmentId(promptPrefix);
-      const [context, assignmentDetail] = await Promise.all([
-        getCourseContextSafe(canvasCourseId, { tenantId: identity.tenantId }),
-        canvasAssignmentId != null
-          ? getAssignmentDetailSafe(canvasCourseId, canvasAssignmentId, {
-              tenantId: identity.tenantId,
-            })
-          : Promise.resolve(null),
-      ]);
-      if (context) {
-        sections.push(buildCourseCard(context));
-      }
-      if (assignmentDetail) {
-        sections.push(buildAssignmentCard(assignmentDetail.assignment));
+      if (teacherAssistant) {
+        const teacherCourseIds = await getTeacherCourseIds(req.user?.id);
+        if (!teacherCourseIds.has(canvasCourseId)) {
+          return res.status(403).json({ message: 'This course is not on your Canvas account' });
+        }
+        const context = await getCourseContextSafe(canvasCourseId, {
+          tenantId: identity.tenantId,
+        });
+        if (context) {
+          sections.push(buildCourseCard(context));
+        }
+        sections.push(await buildClassReceiptsCard(canvasCourseId));
+      } else {
+        const canvasAssignmentId = extractCanvasAssignmentId(promptPrefix);
+        const assistance = await getCourseAssistance(canvasCourseId, canvasAssignmentId);
+        if (markedLevel == null && assistance.policyLevel != null) {
+          sections[1] = buildAssistancePolicy(assistance.policyLevel);
+        }
+        const courseRules = buildCourseRules(assistance.blockedRules);
+        if (courseRules != null) {
+          sections.push(courseRules);
+        }
+        const [context, assignmentDetail] = await Promise.all([
+          getCourseContextSafe(canvasCourseId, { tenantId: identity.tenantId }),
+          canvasAssignmentId != null
+            ? getAssignmentDetailSafe(canvasCourseId, canvasAssignmentId, {
+                tenantId: identity.tenantId,
+              })
+            : Promise.resolve(null),
+        ]);
+        if (context) {
+          sections.push(buildCourseCard(context));
+        }
+        if (assignmentDetail) {
+          sections.push(buildAssignmentCard(assignmentDetail.assignment));
+        }
       }
     }
   } catch (error) {

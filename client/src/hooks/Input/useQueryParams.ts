@@ -333,6 +333,9 @@ export default function useQueryParams({
       if (courseHandoff?.promptPrefix) {
         queryParams.promptPrefix = courseHandoff.promptPrefix;
       }
+      if (courseHandoff?.spec != null && queryParams.spec == null) {
+        queryParams.spec = courseHandoff.spec;
+      }
 
       // Support both 'prompt' and 'q' as query parameters, with 'prompt' taking precedence
       const decodedPrompt =
