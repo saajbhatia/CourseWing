@@ -116,6 +116,7 @@ or the user will need to attempt logging in to have a verification link sent to 
   const user = { email, password, name, username, confirm_password: password };
   const additionalData = {
     emailVerified,
+    bypassDomainAllowlist: true,
     ...(provider !== undefined ? { provider } : {}),
     ...(courseRole !== undefined ? { courseRole } : {}),
   };

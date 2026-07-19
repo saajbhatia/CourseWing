@@ -323,7 +323,8 @@ const verifyEmail = async (req) => {
 /**
  * Register a new user.
  * @param {IUser} user <email, password, name, username>
- * @param {Partial<IUser>} [additionalData={}] Trusted server-provided fields, such as CLI overrides.
+ * @param {Partial<IUser> & { bypassDomainAllowlist?: boolean }} [additionalData={}]
+ * Trusted server-provided fields, such as CLI overrides.
  * @returns {Promise<{status: number, message: string, user?: IUser}>}
  */
 const registerUser = async (user, additionalData = {}) => {
@@ -340,7 +341,12 @@ const registerUser = async (user, additionalData = {}) => {
   }
 
   const { email, password, name, username } = result.data;
-  const { provider, courseInvite, ...trustedAdditionalData } = additionalData ?? {};
+  const {
+    provider,
+    courseInvite,
+    bypassDomainAllowlist = false,
+    ...trustedAdditionalData
+  } = additionalData ?? {};
   const normalizedEmail = email.trim().toLowerCase();
   const hasMatchingCourseInvite =
     (courseInvite?.type === 'course_share' ||
@@ -356,6 +362,7 @@ const registerUser = async (user, additionalData = {}) => {
     const tenantId = getTenantId();
     const appConfig = await getAppConfig(tenantId ? { tenantId } : {});
     if (
+      !bypassDomainAllowlist &&
       !isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains) &&
       !hasMatchingCourseInvite
     ) {

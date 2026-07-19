@@ -1399,4 +1399,18 @@ describe('registerUser - allowedDomains admin-panel override', () => {
     expect(result.user).toMatchObject({ _id: 'shared-user-id' });
     expect(findUser).toHaveBeenCalledWith({ email: 'new@outside.test' }, 'email _id');
   });
+
+  it('should let trusted administrative callers bypass the public domain allowlist', async () => {
+    isEmailDomainAllowed.mockReturnValue(false);
+    createUser.mockResolvedValue({ _id: 'new-user-id' });
+    updateUser.mockResolvedValue({ _id: 'new-user-id' });
+
+    const result = await registerUser(
+      { ...validUser, email: 'teacher@2utorly.test' },
+      { bypassDomainAllowlist: true, emailVerified: true },
+    );
+
+    expect(result.status).toBe(200);
+    expect(findUser).toHaveBeenCalledWith({ email: 'teacher@2utorly.test' }, 'email _id');
+  });
 });
