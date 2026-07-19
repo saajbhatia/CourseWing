@@ -323,7 +323,8 @@ const verifyEmail = async (req) => {
 /**
  * Register a new user.
  * @param {IUser} user <email, password, name, username>
- * @param {Partial<IUser>} [additionalData={}] Trusted server-provided fields, such as CLI overrides.
+ * @param {Partial<IUser> & { bypassDomainAllowlist?: boolean }} [additionalData={}]
+ * Trusted server-provided fields, such as CLI overrides.
  * @returns {Promise<{status: number, message: string, user?: IUser}>}
  */
 const registerUser = async (user, additionalData = {}) => {
@@ -340,13 +341,20 @@ const registerUser = async (user, additionalData = {}) => {
   }
 
   const { email, password, name, username } = result.data;
-  const { provider, ...trustedAdditionalData } = additionalData ?? {};
+  const {
+    provider,
+    bypassDomainAllowlist = false,
+    ...trustedAdditionalData
+  } = additionalData ?? {};
 
   let newUserId;
   try {
     const tenantId = getTenantId();
     const appConfig = await getAppConfig(tenantId ? { tenantId } : {});
-    if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
+    if (
+      !bypassDomainAllowlist &&
+      !isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)
+    ) {
       const errorMessage =
         'The email address provided cannot be used. Please use a different email address.';
       logger.error(`[registerUser] [Registration not allowed] [Email: ${user.email}]`);
