@@ -97,7 +97,7 @@ export default function CoursePanel({
       } else {
         showToast({
           status: 'error',
-          message: localize('com_ui_guest_handoff_error'),
+          message: localize('com_ui_course_handoff_error'),
         });
       }
     }

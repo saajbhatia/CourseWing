@@ -3,6 +3,7 @@ import { RecoilRoot } from 'recoil';
 import { Tools, Constants } from 'librechat-data-provider';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ToolCall from '../ToolCall';
+import { NATIVE_COURSE_DATA_CHANGED_EVENT } from '~/components/Courses/assistantEvents';
 
 // Mock dependencies
 jest.mock('~/hooks', () => ({
@@ -253,6 +254,110 @@ describe('ToolCall', () => {
   });
 
   describe('tool call info visibility', () => {
+    it('notifies the parent once when a native course mutation completes', () => {
+      const postMessage = jest.spyOn(window.parent, 'postMessage').mockImplementation();
+      const { rerender } = renderWithRecoil(
+        <ToolCall {...mockProps} name="native_course_log_time" output='{"ok":true}' />,
+      );
+
+      expect(postMessage).toHaveBeenCalledTimes(1);
+      expect(postMessage).toHaveBeenCalledWith(
+        { type: NATIVE_COURSE_DATA_CHANGED_EVENT },
+        window.location.origin,
+      );
+
+      rerender(
+        <RecoilRoot>
+          <ToolCall {...mockProps} name="native_course_log_time" output='{"ok":true}' />
+        </RecoilRoot>,
+      );
+      expect(postMessage).toHaveBeenCalledTimes(1);
+      postMessage.mockRestore();
+    });
+
+    it('does not notify the parent or claim success when a native mutation fails', () => {
+      const postMessage = jest.spyOn(window.parent, 'postMessage').mockImplementation();
+      renderWithRecoil(
+        <ToolCall
+          {...mockProps}
+          name="native_course_log_time"
+          output='{"ok":false,"error":"Not allowed"}'
+        />,
+      );
+
+      expect(postMessage).not.toHaveBeenCalled();
+      expect(screen.getByText('Course action could not be completed')).toBeInTheDocument();
+      expect(screen.queryByText('Updated your time log')).not.toBeInTheDocument();
+      postMessage.mockRestore();
+    });
+
+    it('does not notify the parent for native course reads or unfinished mutations', () => {
+      const postMessage = jest.spyOn(window.parent, 'postMessage').mockImplementation();
+      const { rerender } = renderWithRecoil(
+        <ToolCall {...mockProps} name="native_course_get_context" />,
+      );
+
+      rerender(
+        <RecoilRoot>
+          <ToolCall
+            {...mockProps}
+            name="native_course_log_time"
+            output={null}
+            initialProgress={0.5}
+            isSubmitting
+          />
+        </RecoilRoot>,
+      );
+      expect(postMessage).not.toHaveBeenCalled();
+      postMessage.mockRestore();
+    });
+
+    it('waits for the tool result even when visual progress has reached 100%', () => {
+      const postMessage = jest.spyOn(window.parent, 'postMessage').mockImplementation();
+      const { rerender } = renderWithRecoil(
+        <ToolCall
+          {...mockProps}
+          name="native_course_log_time"
+          output={null}
+          initialProgress={1}
+          isSubmitting
+        />,
+      );
+
+      expect(postMessage).not.toHaveBeenCalled();
+
+      rerender(
+        <RecoilRoot>
+          <ToolCall
+            {...mockProps}
+            name="native_course_log_time"
+            output='{"ok":true}'
+            initialProgress={1}
+            isSubmitting
+          />
+        </RecoilRoot>,
+      );
+      expect(postMessage).toHaveBeenCalledTimes(1);
+      postMessage.mockRestore();
+    });
+
+    it('keeps native course identifiers out of the visible tool card', () => {
+      renderWithRecoil(
+        <ToolCall
+          {...mockProps}
+          name="native_course_get_context"
+          args={{ courseId: 'private-course-id', projectId: 'private-project-id' }}
+          output='{"ok":true,"entityId":"private-record-id"}'
+        />,
+      );
+
+      expect(screen.getByText('Checked your course workspace')).toBeInTheDocument();
+      expect(screen.queryByTestId('tool-call-info')).not.toBeInTheDocument();
+      expect(screen.queryByText(/private-course-id/u)).not.toBeInTheDocument();
+      expect(screen.queryByText(/private-project-id/u)).not.toBeInTheDocument();
+      expect(screen.queryByText(/private-record-id/u)).not.toBeInTheDocument();
+    });
+
     it('should toggle tool call info expand/collapse when clicking header', () => {
       renderWithRecoil(<ToolCall {...mockProps} />);
 

@@ -19,6 +19,7 @@
     "paths": {
       "~/*": ["./src/*"],
       "test/*": ["./test/*"],
+      "librechat-data-provider": ["../packages/data-provider/dist/types/index.d.ts"],
       "*": ["./*", "../../node_modules/*"],
       "librechat-data-provider/*": ["../packages/data-provider/*"]
     }

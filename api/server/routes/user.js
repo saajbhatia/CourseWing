@@ -7,6 +7,7 @@ const {
   verifyEmailController,
   deleteUserController,
   getUserController,
+  updateUserProfileController,
 } = require('~/server/controllers/UserController');
 const {
   verifyEmailLimiter,
@@ -22,6 +23,7 @@ const router = express.Router();
 
 router.use('/settings', settings);
 router.get('/', requireJwtAuth, getUserController);
+router.patch('/profile', requireJwtAuth, updateUserProfileController);
 router.get('/terms', requireJwtAuth, getTermsStatusController);
 router.post('/terms/accept', requireJwtAuth, acceptTermsController);
 router.post('/plugins', requireJwtAuth, updateUserPluginsController);

@@ -14,12 +14,19 @@ import type {
   Agent,
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
+import { nativeCourseToolKeys } from '~/courses';
 import { isLearnLightEnabled, learnLightToolKeys } from '~/learnlight';
 import { requiresEphemeralUserConnection } from '~/mcp/utils';
 import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
 type ModelParametersWithPromptPrefix = AgentModelParameters & { promptPrefix?: string | null };
+
+const nativeCourseAssistantGuidance = [
+  'When using native_course tools, treat course, project, member, work, AI-use, file, feedback, action-item, receipt, and undo identifiers as private implementation details.',
+  'Use exact identifiers internally for tool calls, but do not print them in the user-facing answer unless the user explicitly asks for an identifier.',
+  'Confirm completed actions with human-readable course, project, file, or record names, and keep any undo receipt available internally for a later undo request.',
+].join(' ');
 
 function applyLearnLightCourseOverlay(agent: Agent, promptPrefix: string): Agent {
   const instructions = [agent.instructions, promptPrefix]
@@ -37,17 +44,33 @@ function applyLearnLightCourseOverlay(agent: Agent, promptPrefix: string): Agent
   };
 }
 
+function applyNativeCourseOverlay(agent: Agent): Agent {
+  const tools = new Set(agent.tools ?? []);
+  for (const toolKey of nativeCourseToolKeys) {
+    tools.add(toolKey);
+  }
+  const instructions = [agent.instructions, nativeCourseAssistantGuidance]
+    .filter((section): section is string => typeof section === 'string' && section.trim() !== '')
+    .join('\n\n');
+  return {
+    ...agent,
+    instructions,
+    tools: Array.from(tools),
+  };
+}
+
 export interface LoadAgentDeps {
   getAgent: (searchParameter: { id: string }) => Promise<Agent | null>;
   getMCPServerTools: (
     userId: string,
     serverName: string,
   ) => Promise<Record<string, unknown> | null>;
+  hasNativeCourseAccess?: (userId: string, email?: string) => Promise<boolean>;
 }
 
 export interface LoadAgentParams {
   req: {
-    user?: { id?: string };
+    user?: { id?: string; email?: string };
     config?: AppConfig;
     body?: {
       promptPrefix?: string;
@@ -60,6 +83,22 @@ export interface LoadAgentParams {
   model_parameters?: AgentModelParameters & { model?: string };
   /** Applies request-scoped LearnLight context to the primary chat agent only. */
   applyLearnLightCourseContext?: boolean;
+}
+
+async function canUseNativeCourseTools(
+  req: LoadAgentParams['req'],
+  deps: LoadAgentDeps,
+): Promise<boolean> {
+  const userId = req.user?.id;
+  if (!userId || !deps.hasNativeCourseAccess) {
+    return false;
+  }
+  try {
+    return await deps.hasNativeCourseAccess(userId, req.user?.email);
+  } catch (error) {
+    logger.error('[loadAgent] Error checking native course access', error);
+    return false;
+  }
 }
 
 /**
@@ -99,6 +138,10 @@ export async function loadEphemeralAgent(
   if (isLearnLightEnabled()) {
     tools.push(...learnLightToolKeys);
   }
+  const hasNativeCourseAccess = await canUseNativeCourseTools(req, deps);
+  if (hasNativeCourseAccess) {
+    tools.push(...nativeCourseToolKeys);
+  }
 
   const addedServers = new Set<string>();
   if (mcpServers.size > 0) {
@@ -126,8 +169,15 @@ export async function loadEphemeralAgent(
   const requestPromptPrefix = req.body?.promptPrefix;
   const { promptPrefix: modelPromptPrefix, ...safeModelParameters } =
     model_parameters as ModelParametersWithPromptPrefix;
-  const instructions =
+  const baseInstructions =
     typeof modelPromptPrefix === 'string' ? modelPromptPrefix : requestPromptPrefix;
+  const instructions = hasNativeCourseAccess
+    ? [baseInstructions, nativeCourseAssistantGuidance]
+        .filter(
+          (section): section is string => typeof section === 'string' && section.trim() !== '',
+        )
+        .join('\n\n')
+    : baseInstructions;
 
   // Get endpoint config for modelDisplayLabel fallback
   const appConfig = req.config;
@@ -208,16 +258,19 @@ export async function loadAgent(
   }
 
   // Set version count from versions array length
-  const agentWithVersion = agent as Agent & { versions?: unknown[]; version?: number };
-  agentWithVersion.version = agentWithVersion.versions ? agentWithVersion.versions.length : 0;
+  const agentWithVersion = {
+    ...agent,
+    version: (agent as Agent & { versions?: unknown[]; version?: number }).versions?.length ?? 0,
+  } as Agent & { versions?: unknown[]; version?: number };
 
   const promptPrefix = req.body?.promptPrefix;
+  let runtimeAgent: Agent = agentWithVersion;
   if (!isLearnLightEnabled() && Array.isArray(agentWithVersion.tools)) {
     const filteredTools = agentWithVersion.tools.filter(
       (toolKey) => !learnLightToolKeys.includes(toolKey as (typeof learnLightToolKeys)[number]),
     );
     if (filteredTools.length !== agentWithVersion.tools.length) {
-      return { ...agentWithVersion, tools: filteredTools };
+      runtimeAgent = { ...runtimeAgent, tools: filteredTools };
     }
   }
   const isLearnLightCourseRequest =
@@ -226,8 +279,12 @@ export async function loadAgent(
     typeof promptPrefix === 'string' &&
     extractCanvasCourseId(promptPrefix) != null;
   if (isLearnLightCourseRequest) {
-    return applyLearnLightCourseOverlay(agentWithVersion, promptPrefix);
+    runtimeAgent = applyLearnLightCourseOverlay(runtimeAgent, promptPrefix);
   }
 
-  return agentWithVersion;
+  if (await canUseNativeCourseTools(req, deps)) {
+    runtimeAgent = applyNativeCourseOverlay(runtimeAgent);
+  }
+
+  return runtimeAgent;
 }

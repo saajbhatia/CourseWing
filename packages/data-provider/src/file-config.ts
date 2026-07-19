@@ -150,15 +150,7 @@ export const imageExtRegex = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i;
 
 /** @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_DocumentBlock.html */
 export type BedrockDocumentFormat =
-  | 'pdf'
-  | 'csv'
-  | 'doc'
-  | 'docx'
-  | 'xls'
-  | 'xlsx'
-  | 'html'
-  | 'txt'
-  | 'md';
+  'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
 
 /** Maps MIME types to Bedrock Converse API document format values */
 export const bedrockDocumentFormats: Record<string, BedrockDocumentFormat> = {
@@ -207,11 +199,12 @@ export const defaultOCRMimeTypes = [
   /^application\/vnd\.oasis\.opendocument\.(text|spreadsheet|presentation|graphics)$/,
 ];
 
-/** MIME types handled by the built-in document parser (pdf, docx, excel variants, ods/odt) */
+/** MIME types handled by the built-in document parser (pdf, docx, pptx, excel variants, ods/odt) */
 export const documentParserMimeTypes = [
   excelMimeTypes,
   /^application\/pdf$/,
   /^application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document$/,
+  /^application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation$/,
   /^application\/vnd\.oasis\.opendocument\.spreadsheet$/,
   /^application\/vnd\.oasis\.opendocument\.text$/,
 ];

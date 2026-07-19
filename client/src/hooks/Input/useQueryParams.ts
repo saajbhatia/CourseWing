@@ -26,7 +26,6 @@ import {
   consumeCourseChatHandoff,
   type CourseChatHandoff,
 } from '~/components/LearnLight/utils';
-import { consumeGuestChatHandoff, type GuestChatHandoff } from '~/utils/guestChatHandoff';
 import store from '~/store';
 
 const PROJECT_ID_SEARCH_PARAM = 'projectId';
@@ -63,9 +62,8 @@ export default function useQueryParams({
   const maxWaitAttempts = 600;
   const waitAttemptsRef = useRef(0);
   const MAX_SETTINGS_WAIT_MS = 3000;
-  /** Subscribed via the shared hook (not only a raw cache read) so the query is guaranteed
-   * to fetch and the auth-scoped cache key always matches — a guest's key differs from
-   * `startupConfigKey(isAuthenticated)` while Recoil user state and auth state disagree. */
+  /** Subscribed via the shared hook so the query is guaranteed to fetch and the
+   * auth-scoped cache key remains synchronized with the active session. */
   const { data: startupConfigData } = useGetStartupConfig();
   const startupConfigRef = useRef<TStartupConfig | undefined>(startupConfigData);
   startupConfigRef.current = startupConfigData;
@@ -77,7 +75,6 @@ export default function useQueryParams({
   const promptTextRef = useRef<string | null>(null);
   const validSettingsRef = useRef<TPreset | null>(null);
   const courseHandoffRef = useRef<{ id: string; value: CourseChatHandoff | null } | null>(null);
-  const guestHandoffRef = useRef<GuestChatHandoff | null | undefined>(undefined);
   const settingsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const methods = useChatFormContext();
@@ -106,8 +103,7 @@ export default function useQueryParams({
   const readStartupConfig = useCallback(
     () =>
       startupConfigRef.current ??
-      queryClient.getQueryData<TStartupConfig>(startupConfigKey(isAuthenticated)) ??
-      queryClient.getQueryData<TStartupConfig>(startupConfigKey(!isAuthenticated)),
+      queryClient.getQueryData<TStartupConfig>(startupConfigKey(isAuthenticated)),
     [queryClient, isAuthenticated],
   );
 
@@ -287,12 +283,8 @@ export default function useQueryParams({
       }
     })();
 
-    /** Guest submission navigates to login. A second router navigation from the old chat page
-     * can supersede that redirect, so the authenticated continuation owns URL cleanup. */
-    if (isAuthenticated) {
-      setSearchParams(getPreservedSearchParams(), { replace: true });
-    }
-  }, [methods, submitMessage, setSearchParams, getPreservedSearchParams, isAuthenticated]);
+    setSearchParams(getPreservedSearchParams(), { replace: true });
+  }, [methods, submitMessage, setSearchParams, getPreservedSearchParams]);
 
   useEffect(() => {
     const searchString = searchParams.toString();
@@ -310,10 +302,6 @@ export default function useQueryParams({
     }
 
     const processQueryParams = () => {
-      if (isAuthenticated && guestHandoffRef.current === undefined) {
-        guestHandoffRef.current = consumeGuestChatHandoff();
-      }
-      const guestHandoff = guestHandoffRef.current ?? null;
       const queryParams: Record<string, string> = {};
       searchParams.forEach((value, key) => {
         queryParams[key] = value;
@@ -335,26 +323,19 @@ export default function useQueryParams({
       }
 
       // Support both 'prompt' and 'q' as query parameters, with 'prompt' taking precedence
-      const decodedPrompt =
-        guestHandoff?.prompt || courseHandoff?.prompt || queryParams.prompt || queryParams.q || '';
+      const decodedPrompt = courseHandoff?.prompt || queryParams.prompt || queryParams.q || '';
       const shouldAutoSubmit =
-        guestHandoff != null ||
-        Boolean(courseHandoff?.prompt) ||
-        queryParams.submit?.toLowerCase() === 'true';
+        Boolean(courseHandoff?.prompt) || queryParams.submit?.toLowerCase() === 'true';
       delete queryParams.prompt;
       delete queryParams.q;
       delete queryParams.submit;
       delete queryParams[PROJECT_ID_SEARCH_PARAM];
-      const validSettings = {
-        ...processValidSettings(queryParams),
-        ...(guestHandoff ? processValidSettings(guestHandoff.settings) : {}),
-      };
+      const validSettings = processValidSettings(queryParams);
 
       return {
         decodedPrompt,
         validSettings,
         shouldAutoSubmit,
-        guestHandoff: guestHandoff != null,
         explicitCourseSubmit: Boolean(courseHandoff?.prompt),
         invalidCourseHandoff: hasCourseHandoffParam && courseHandoff == null,
       };
@@ -391,14 +372,10 @@ export default function useQueryParams({
         decodedPrompt,
         validSettings,
         shouldAutoSubmit,
-        guestHandoff,
         explicitCourseSubmit,
         invalidCourseHandoff,
       } = processQueryParams();
-      /** A guest handoff is the durable continuation of an explicit Send click. The original
-       * course handoff may already have been consumed before login, so its stale URL handle must
-       * not discard the valid guest draft and Canvas course context after authentication. */
-      if (invalidCourseHandoff && !guestHandoff) {
+      if (invalidCourseHandoff) {
         clearPendingCourse();
         processedRef.current = true;
         submissionHandledRef.current = true;
@@ -418,10 +395,8 @@ export default function useQueryParams({
       }
 
       const autoSubmitAllowed = startupConfig.interface?.autoSubmitFromUrl !== false;
-      /** Guest continuations and course prompt buttons follow explicit Send clicks; neither is
-       * arbitrary URL-triggered automation. */
-      const willAutoSubmit =
-        guestHandoff || explicitCourseSubmit || (shouldAutoSubmit && autoSubmitAllowed);
+      /** Course prompt buttons follow an explicit Send click rather than arbitrary URL automation. */
+      const willAutoSubmit = explicitCourseSubmit || (shouldAutoSubmit && autoSubmitAllowed);
 
       if (!willAutoSubmit) {
         submissionHandledRef.current = true;
@@ -430,15 +405,12 @@ export default function useQueryParams({
       /** Mark processing as complete and clean up as needed */
       const success = () => {
         processedRef.current = true;
-        if (guestHandoff) {
-          guestHandoffRef.current = null;
-        }
         logger.log('conversation', 'Query parameters processed successfully');
         clearInterval(intervalId);
 
         // Defer URL cleanup until after submission completes (processSubmission handles it);
         // skip it entirely when nothing was consumed so the URL rewrite cannot retrigger this effect
-        if (isAuthenticated && !pendingSubmitRef.current && hasProcessableParams) {
+        if (!pendingSubmitRef.current && hasProcessableParams) {
           setSearchParams(getPreservedSearchParams(), { replace: true });
         }
       };
@@ -521,7 +493,6 @@ export default function useQueryParams({
     processSubmission,
     areSettingsApplied,
     readStartupConfig,
-    isAuthenticated,
   ]);
 
   useEffect(() => {

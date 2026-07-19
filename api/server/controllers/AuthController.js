@@ -25,6 +25,7 @@ const {
   findUser,
 } = require('~/models');
 const { getGraphApiToken } = require('~/server/services/GraphTokenService');
+const { completeCourseInvitation } = require('~/server/services/NativeCourseInvitations');
 const { getOpenIdConfig, getOpenIdEmail } = require('~/strategies');
 
 const AUTH_REFRESH_USER_PROJECTION = '-password -__v -totpSecret -backupCodes -federatedTokens';
@@ -44,8 +45,18 @@ const OPENID_REUSE_MAX_SESSION_AGE_MS = math(
 
 const registrationController = async (req, res) => {
   try {
-    const response = await registerUser(req.body);
+    const response = req.courseInvite
+      ? await registerUser(req.body, { courseInvite: req.courseInvite })
+      : await registerUser(req.body);
     const { status, message } = response;
+    if (status === 200 && req.courseInvite) {
+      const registeredUser =
+        response.user ?? (await findUser({ email: req.body.email }, 'email _id'));
+      if (!registeredUser?._id) {
+        throw new Error('Unable to finish the course invitation');
+      }
+      await completeCourseInvitation(req.courseInvite, registeredUser._id, req.body.email);
+    }
     res.status(status).send({ message });
   } catch (err) {
     logger.error('[registrationController]', err);

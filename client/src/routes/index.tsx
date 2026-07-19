@@ -57,6 +57,16 @@ const loadCoursePage = () =>
     Component: m.CoursePage,
   }));
 
+const loadNativeCourseHub = () =>
+  import('~/components/Courses').then((m) => ({
+    Component: m.CourseHub,
+  }));
+
+const loadNativeCourseWorkspace = () =>
+  import('~/components/Courses').then((m) => ({
+    Component: m.CourseWorkspace,
+  }));
+
 const baseEl = document.querySelector('base');
 const baseHref = baseEl?.getAttribute('href') || '/';
 
@@ -188,6 +198,14 @@ export const router = createBrowserRouter(
             {
               path: 'courses/:courseId',
               lazy: loadCoursePage,
+            },
+            {
+              path: 'workspace/courses',
+              lazy: loadNativeCourseHub,
+            },
+            {
+              path: 'workspace/courses/:courseId',
+              lazy: loadNativeCourseWorkspace,
             },
             {
               path: 'agents',

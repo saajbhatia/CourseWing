@@ -38,6 +38,7 @@ function LoadingSpinner() {
 
 function ChatView({ index = 0, project }: { index?: number; project?: TChatProject }) {
   const { conversationId } = useParams();
+  const isEmbedded = window.self !== window.top;
   const localize = useLocalize();
   const rootSubmission = useRecoilValue(store.submissionByIndex(index));
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(index));
@@ -101,7 +102,7 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
         <AddedChatContext.Provider value={addedChatHelpers}>
           <Presentation>
             <div className="relative flex h-full w-full flex-col">
-              <Header />
+              {isEmbedded ? null : <Header />}
               <>
                 <div
                   className={cn(

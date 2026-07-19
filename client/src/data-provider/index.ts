@@ -2,6 +2,7 @@ export * from './Auth';
 export * from './Agents';
 export * from './Endpoints';
 export * from './LearnLight';
+export * from './Courses';
 export * from './Skills';
 export * from './Files';
 /* Memories */

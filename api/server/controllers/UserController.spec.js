@@ -112,12 +112,13 @@ afterEach(async () => {
 const {
   deleteUserController,
   getUserController,
+  updateUserProfileController,
   acceptTermsController,
   resendVerificationController,
   verifyEmailController,
 } = require('./UserController');
 const { Group } = require('~/db/models');
-const { deleteConvos, acceptTerms } = require('~/models');
+const { deleteConvos, acceptTerms, updateUser } = require('~/models');
 const { verifyEmail, resendVerificationEmail } = require('~/server/services/AuthService');
 
 describe('verifyEmailController', () => {
@@ -183,6 +184,13 @@ describe('getUserController', () => {
         twoFactorEnabled: true,
         termsAccepted: true,
         personalization: { memories: false },
+        profile: {
+          preferredName: 'OpenID',
+          interests: ['Research'],
+          bio: 'Student researcher',
+          website: 'https://example.com',
+          github: 'https://github.com/example',
+        },
         favorites: [{ model: 'gpt-5', endpoint: 'openAI' }],
         skillStates: { skill_one: true },
         createdAt,
@@ -234,6 +242,13 @@ describe('getUserController', () => {
       twoFactorEnabled: true,
       termsAccepted: true,
       personalization: { memories: false },
+      profile: {
+        preferredName: 'OpenID',
+        interests: ['Research'],
+        bio: 'Student researcher',
+        website: 'https://example.com',
+        github: 'https://github.com/example',
+      },
       favorites: [{ model: 'gpt-5', endpoint: 'openAI' }],
       skillStates: { skill_one: true },
       createdAt,
@@ -255,6 +270,113 @@ describe('getUserController', () => {
     expect(sentUser).not.toHaveProperty('openidTokens');
     expect(sentUser).not.toHaveProperty('tokenset');
     expect(sentUser).not.toHaveProperty('safeLookingRuntimeField');
+  });
+});
+
+describe('updateUserProfileController', () => {
+  const mockRes = {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn().mockReturnThis(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('stores a sanitized global profile and returns the public user', async () => {
+    updateUser.mockImplementationOnce(async (id) => ({
+      id,
+      name: 'Student',
+      email: 'student@example.com',
+      provider: 'local',
+      role: 'USER',
+      profile: {
+        preferredName: 'Avery',
+        interests: ['AI', 'Design'],
+        bio: 'Builds research tools.',
+        website: 'https://avery.example/',
+        github: 'https://github.com/avery',
+      },
+    }));
+
+    await updateUserProfileController(
+      {
+        user: { id: 'student-id' },
+        body: {
+          preferredName: '  Avery  ',
+          interests: [' AI ', 'AI', 'Design'],
+          bio: '  Builds research tools.  ',
+          website: 'https://avery.example',
+          github: 'https://github.com/avery',
+        },
+      },
+      mockRes,
+    );
+
+    expect(updateUser).toHaveBeenCalledWith('student-id', {
+      'profile.preferredName': 'Avery',
+      'profile.interests': ['AI', 'Design'],
+      'profile.bio': 'Builds research tools.',
+      'profile.website': 'https://avery.example/',
+      'profile.github': 'https://github.com/avery',
+    });
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+    expect(mockRes.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'student-id',
+        profile: expect.objectContaining({ preferredName: 'Avery' }),
+      }),
+    );
+  });
+
+  it('rejects invalid profile URLs without updating the user', async () => {
+    await updateUserProfileController(
+      {
+        user: { id: 'student-id' },
+        body: {
+          preferredName: '',
+          interests: [],
+          bio: '',
+          website: 'javascript:alert(1)',
+          github: '',
+        },
+      },
+      mockRes,
+    );
+
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(mockRes.status).toHaveBeenCalledWith(400);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      message: 'Website must be an http(s) URL',
+    });
+  });
+
+  it('updates only supplied profile fields', async () => {
+    updateUser.mockResolvedValueOnce({
+      id: 'student-id',
+      email: 'student@example.com',
+      provider: 'local',
+      profile: {
+        preferredName: 'Avery',
+        interests: ['AI'],
+        bio: 'Updated bio',
+        website: 'https://avery.example/',
+        github: 'https://github.com/avery',
+      },
+    });
+
+    await updateUserProfileController(
+      {
+        user: { id: 'student-id' },
+        body: { bio: '  Updated bio  ' },
+      },
+      mockRes,
+    );
+
+    expect(updateUser).toHaveBeenCalledWith('student-id', {
+      'profile.bio': 'Updated bio',
+    });
+    expect(mockRes.status).toHaveBeenCalledWith(200);
   });
 });
 

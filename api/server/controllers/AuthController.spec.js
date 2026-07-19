@@ -4,6 +4,9 @@ jest.mock('@librechat/data-schemas', () => ({
 jest.mock('~/server/services/GraphTokenService', () => ({
   getGraphApiToken: jest.fn(),
 }));
+jest.mock('~/server/services/NativeCourseInvitations', () => ({
+  completeCourseInvitation: jest.fn(),
+}));
 jest.mock('~/server/services/AuthService', () => ({
   requestPasswordReset: jest.fn(),
   setOpenIDAuthTokens: jest.fn(),
@@ -42,9 +45,15 @@ const openIdClient = require('openid-client');
 const jwt = require('jsonwebtoken');
 const { logger } = require('@librechat/data-schemas');
 const { isEnabled, findOpenIDUser, buildOpenIDRefreshParams } = require('@librechat/api');
-const { graphTokenController, refreshController } = require('./AuthController');
-const { getGraphApiToken } = require('~/server/services/GraphTokenService');
 const {
+  graphTokenController,
+  refreshController,
+  registrationController,
+} = require('./AuthController');
+const { getGraphApiToken } = require('~/server/services/GraphTokenService');
+const { completeCourseInvitation } = require('~/server/services/NativeCourseInvitations');
+const {
+  registerUser,
   setOpenIDAuthTokens,
   setCloudFrontAuthCookies,
   setAuthTokens,
@@ -56,6 +65,58 @@ const ORIGINAL_OPENID_SCOPE = process.env.OPENID_SCOPE;
 const ORIGINAL_OPENID_REFRESH_AUDIENCE = process.env.OPENID_REFRESH_AUDIENCE;
 const ORIGINAL_JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+
+describe('registrationController course invitation completion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('consumes the invitation only after registration returns a user and membership activation succeeds', async () => {
+    const invite = {
+      email: 'student@example.com',
+      identifier: 'course-1',
+      type: 'course_invite',
+      token: 'stored-hash',
+    };
+    const user = { _id: 'user-1', email: invite.email };
+    registerUser.mockResolvedValue({ status: 200, message: 'Registered', user });
+    completeCourseInvitation.mockResolvedValue({ state: 'active' });
+    const req = {
+      body: { email: invite.email },
+      courseInvite: invite,
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      send: jest.fn(),
+      json: jest.fn(),
+    };
+
+    await registrationController(req, res);
+
+    expect(registerUser).toHaveBeenCalledWith(req.body, { courseInvite: invite });
+    expect(completeCourseInvitation).toHaveBeenCalledWith(invite, 'user-1', invite.email);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({ message: 'Registered' });
+  });
+
+  it('does not complete an invitation after failed registration', async () => {
+    registerUser.mockResolvedValue({ status: 403, message: 'Blocked' });
+    const req = {
+      body: { email: 'student@example.com' },
+      courseInvite: { type: 'course_invite' },
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      send: jest.fn(),
+      json: jest.fn(),
+    };
+
+    await registrationController(req, res);
+
+    expect(completeCourseInvitation).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
 
 describe('graphTokenController', () => {
   let req, res;

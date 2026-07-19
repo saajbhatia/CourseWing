@@ -144,17 +144,18 @@ describe('GET /api/config', () => {
       expect(response.statusCode).toBe(200);
       expect(response.body.socialLogins).toEqual(['saml']);
       expect(response.body.turnstile).toEqual({ siteKey: 'tenant-key' });
-      expect(response.body.modelSpecs).toEqual({ list: [{ name: 'test-spec' }] });
+      expect(response.body).not.toHaveProperty('modelSpecs');
     });
 
-    it('should return guest chat config without authenticated-only fields', async () => {
+    it('should return only pre-login config without authenticated chat fields', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
       const response = await request(app).get('/api/config');
 
       expect(response.statusCode).toBe(200);
-      expect(response.body.modelSpecs).toEqual({ list: [{ name: 'test-spec' }] });
+      expect(response.body).not.toHaveProperty('modelSpecs');
+      expect(response.body).not.toHaveProperty('learnLightEnabled');
       expect(response.body).not.toHaveProperty('balance');
       expect(response.body).not.toHaveProperty('webSearch');
       expect(response.body).not.toHaveProperty('bundlerURL');
@@ -166,7 +167,7 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('conversationImportMaxFileSize');
     });
 
-    it('should expose LearnLight availability so guest assignment handoffs keep their greeting', async () => {
+    it('should not expose LearnLight availability before login', async () => {
       process.env.LEARNLIGHT_ENABLED = 'true';
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
@@ -174,7 +175,7 @@ describe('GET /api/config', () => {
       const response = await request(app).get('/api/config');
 
       expect(response.statusCode).toBe(200);
-      expect(response.body.learnLightEnabled).toBe(true);
+      expect(response.body).not.toHaveProperty('learnLightEnabled');
     });
 
     it('should strip authenticated-only informational fields from unauthenticated response (#12688)', async () => {
@@ -227,7 +228,7 @@ describe('GET /api/config', () => {
       expect(response.body.turnstile).toEqual({ siteKey: 'test-key' });
     });
 
-    it('should include the interface config required to render guest chat', async () => {
+    it('should include only pre-login policy links from interface config', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
@@ -236,11 +237,10 @@ describe('GET /api/config', () => {
       expect(response.body.interface).toEqual({
         privacyPolicy: { externalUrl: 'https://example.com/privacy' },
         termsOfService: { externalUrl: 'https://example.com/tos' },
-        modelSelect: true,
       });
     });
 
-    it('should include guest UI settings even without policy links', async () => {
+    it('should omit authenticated UI settings when no policy links are configured', async () => {
       mockGetAppConfig.mockResolvedValue({
         ...baseAppConfig,
         interfaceConfig: { modelSelect: true },
@@ -249,7 +249,7 @@ describe('GET /api/config', () => {
 
       const response = await request(app).get('/api/config');
 
-      expect(response.body.interface).toEqual({ modelSelect: true });
+      expect(response.body).not.toHaveProperty('interface');
     });
 
     it('should include shared env var fields', async () => {
@@ -606,7 +606,7 @@ describe('GET /api/config', () => {
       expect(response.body.interface.buildInfo).toBe(false);
     });
 
-    it('preserves an explicit interface.buildInfo=true in the guest interface config', async () => {
+    it('does not expose an explicit interface.buildInfo=true before login', async () => {
       mockGetAppConfig.mockResolvedValue({
         ...baseAppConfig,
         interfaceConfig: { privacyPolicy: { externalUrl: 'https://x' }, buildInfo: true },
@@ -615,8 +615,9 @@ describe('GET /api/config', () => {
 
       const response = await request(app).get('/api/config');
 
-      expect(response.body.interface).toBeDefined();
-      expect(response.body.interface.buildInfo).toBe(true);
+      expect(response.body.interface).toEqual({
+        privacyPolicy: { externalUrl: 'https://x' },
+      });
     });
 
     it('includes interface block with only buildInfo=false when nothing else is set', async () => {

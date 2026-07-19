@@ -35,6 +35,8 @@
     "ban-user": "node config/ban-user.js",
     "delete-user": "node config/delete-user.js",
     "reset-meili-sync": "node config/reset-meili-sync.js",
+    "qa:seed-native-course": "node scripts/seed-native-course-qa.js",
+    "seed:professor-su-example": "node scripts/seed-professor-su-example.js",
     "update-banner": "node config/update-banner.js",
     "delete-banner": "node config/delete-banner.js",
     "backend": "cross-env NODE_ENV=production node api/server/index.js",

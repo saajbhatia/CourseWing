@@ -30,6 +30,7 @@ const {
   isFileAuthoringToolDefinition,
   isLearnLightEnabled,
   isLearnLightToolKey,
+  isNativeCourseToolKey,
 } = require('@librechat/api');
 const {
   Time,
@@ -520,9 +521,10 @@ const nativeTools = new Set([
 const isBuiltInTool = (toolName) =>
   Boolean(
     manifestToolMap[toolName] ||
-      toolkits.some((t) => t.pluginKey === toolName) ||
-      nativeTools.has(toolName) ||
-      (isLearnLightEnabled() && isLearnLightToolKey(toolName)),
+    toolkits.some((t) => t.pluginKey === toolName) ||
+    nativeTools.has(toolName) ||
+    isNativeCourseToolKey(toolName) ||
+    (isLearnLightEnabled() && isLearnLightToolKey(toolName)),
   );
 
 /**

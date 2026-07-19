@@ -1,5 +1,4 @@
 import { Constants } from 'librechat-data-provider';
-import { consumeGuestChatHandoff, storeGuestChatHandoff } from '~/utils/guestChatHandoff';
 import { clearPendingCourse, consumeCourseChatHandoff, openCourseChat } from './utils';
 
 describe('openCourseChat', () => {
@@ -57,39 +56,6 @@ describe('openCourseChat', () => {
     expect(sessionStorage.getItem('learnlight:pendingGreeting')).toBeNull();
   });
 
-  it('preserves assignment context when a guest submits before conversation state catches up', () => {
-    const navigate = jest.fn();
-    const assignmentPrefix = [
-      'Canvas course ID: 42',
-      'Current Canvas course: Chemistry',
-      'Canvas assignment ID: 314',
-      'Assignment: Semester Exam',
-    ].join('\n');
-
-    openCourseChat(
-      navigate,
-      jest.fn(),
-      { canvasCourseId: 42, name: 'Chemistry', courseCode: 'CHEM' },
-      { promptPrefix: assignmentPrefix, greeting: 'Ready to study?' },
-    );
-
-    expect(
-      storeGuestChatHandoff('When is this assignment due?', {
-        conversationId: 'new',
-        title: 'New chat',
-        createdAt: '',
-        updatedAt: '',
-        endpoint: null,
-        model: null,
-        promptPrefix: 'Canvas course ID: 42\nCurrent Canvas course: stale course-only context',
-      }),
-    ).toBe(true);
-    expect(consumeGuestChatHandoff()).toEqual({
-      prompt: 'When is this assignment due?',
-      settings: { promptPrefix: assignmentPrefix },
-    });
-  });
-
   it('clears pending chat handoffs when Canvas identity state is reset', () => {
     const navigate = jest.fn();
     openCourseChat(
@@ -105,11 +71,6 @@ describe('openCourseChat', () => {
 
     expect(consumeCourseChatHandoff(handoffId)).toBeNull();
     expect(sessionStorage.getItem('learnlight:pendingCourse')).toBeNull();
-    expect(storeGuestChatHandoff('This must not inherit stale course context', null)).toBe(true);
-    expect(consumeGuestChatHandoff()).toEqual({
-      prompt: 'This must not inherit stale course context',
-      settings: {},
-    });
   });
 
   it('fails closed without navigating when private handoff storage is unavailable', () => {

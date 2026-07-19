@@ -2,7 +2,6 @@ const express = require('express');
 const { isLearnLightEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { requireJwtAuth, createFeedbackLimiters } = require('~/server/middleware');
-const optionalJwtAuth = require('~/server/middleware/optionalJwtAuth');
 const {
   getUserPluginAuthValue,
   updateUserPluginAuth,
@@ -213,8 +212,8 @@ async function retryPendingRevocation(userId) {
 }
 
 async function proxyUserCanvasData(req, res, servicePath) {
-  const userId = req.user?.id;
-  const release = userId ? await acquireCanvasMutationLock(userId) : () => {};
+  const userId = req.user.id;
+  const release = await acquireCanvasMutationLock(userId);
   try {
     const identity = await getLearnLightCanvasIdentity(userId);
 
@@ -232,14 +231,12 @@ async function proxyUserCanvasData(req, res, servicePath) {
   }
 }
 
-router.get('/canvas', optionalJwtAuth, async (req, res) => {
-  const userId = req.user?.id;
-  const release = userId ? await acquireCanvasMutationLock(userId) : () => {};
+router.get('/canvas', requireJwtAuth, async (req, res) => {
+  const userId = req.user.id;
+  const release = await acquireCanvasMutationLock(userId);
   try {
-    if (userId) {
-      await retryPendingRevocation(userId);
-    }
-    const mappedTenantId = userId ? await getLearnLightTenantId(userId) : null;
+    await retryPendingRevocation(userId);
+    const mappedTenantId = await getLearnLightTenantId(userId);
     const identity = await getLearnLightCanvasIdentity(userId);
 
     const { ok, body } = await serviceFetch('/api/learnlight/tenant', {
@@ -400,7 +397,7 @@ router.delete('/canvas', requireJwtAuth, async (req, res) => {
   }
 });
 
-router.get('/courses/current', optionalJwtAuth, async (req, res) => {
+router.get('/courses/current', requireJwtAuth, async (req, res) => {
   try {
     return await proxyUserCanvasData(req, res, '/api/learnlight/courses/current');
   } catch (error) {
@@ -409,7 +406,7 @@ router.get('/courses/current', optionalJwtAuth, async (req, res) => {
   }
 });
 
-router.get('/courses/:canvasCourseId', optionalJwtAuth, async (req, res) => {
+router.get('/courses/:canvasCourseId', requireJwtAuth, async (req, res) => {
   const canvasCourseId = Number(req.params.canvasCourseId);
   if (!Number.isSafeInteger(canvasCourseId) || canvasCourseId <= 0) {
     return res.status(400).json({ message: 'canvasCourseId must be a positive integer' });

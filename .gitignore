@@ -181,3 +181,6 @@ hive-mind-prompt-*.txt
 CLAUDE.md
 .gsd
 codedb.snapshot
+
+# Generated showcase documents and render iterations are local artifacts, not app source.
+/docs/feature-showcase/

@@ -1345,4 +1345,58 @@ describe('registerUser - allowedDomains admin-panel override', () => {
     // Domain check must happen before any DB user lookup.
     expect(findUser).not.toHaveBeenCalled();
   });
+
+  it('allows only the exact email bound to a current course invitation', async () => {
+    isEmailDomainAllowed.mockReturnValue(false);
+    createUser.mockResolvedValue({ _id: 'invited-user-id', email: validUser.email });
+    updateUser.mockResolvedValue({ _id: 'invited-user-id', emailVerified: true });
+    const courseInvite = {
+      email: validUser.email.toUpperCase(),
+      type: 'course_invite',
+      identifier: 'course-123',
+      token: 'stored-hash',
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+
+    const result = await registerUser(validUser, { courseInvite });
+
+    expect(result.status).toBe(200);
+    expect(result.user).toMatchObject({ _id: 'invited-user-id' });
+    expect(findUser).toHaveBeenCalledWith({ email: validUser.email }, 'email _id');
+    expect(createUser.mock.calls[0][0]).not.toHaveProperty('courseInvite');
+
+    jest.clearAllMocks();
+    isEmailDomainAllowed.mockReturnValue(false);
+    getAppConfig.mockResolvedValue({
+      registration: { allowedDomains: ['example.com'] },
+      balance: undefined,
+    });
+    const wrongEmailResult = await registerUser(
+      { ...validUser, email: 'different@blocked.test' },
+      { courseInvite },
+    );
+    expect(wrongEmailResult.status).toBe(403);
+    expect(findUser).not.toHaveBeenCalled();
+  });
+
+  it('allows the email submitted through a current reusable course share link', async () => {
+    isEmailDomainAllowed.mockReturnValue(false);
+    createUser.mockResolvedValue({ _id: 'shared-user-id', email: 'new@outside.test' });
+    updateUser.mockResolvedValue({ _id: 'shared-user-id', emailVerified: true });
+    const courseInvite = {
+      type: 'course_share',
+      identifier: 'course-123',
+      token: 'stored-share-hash',
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+
+    const result = await registerUser(
+      { ...validUser, email: 'new@outside.test' },
+      { courseInvite },
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.user).toMatchObject({ _id: 'shared-user-id' });
+    expect(findUser).toHaveBeenCalledWith({ email: 'new@outside.test' }, 'email _id');
+  });
 });

@@ -59,3 +59,5 @@ export * from './parameterSettings';
 export * from './codeEnvRef';
 /* LearnLight */
 export * from './learnlight';
+/* Native courses */
+export * from './courses';

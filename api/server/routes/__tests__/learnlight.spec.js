@@ -15,7 +15,6 @@ jest.mock('~/server/middleware', () => ({
     feedbackUserLimiter: (_req, _res, next) => next(),
   }),
 }));
-jest.mock('~/server/middleware/optionalJwtAuth', () => (req, _res, next) => next());
 jest.mock('~/server/services/PluginService', () => ({
   getUserPluginAuthValue: jest.fn(),
   updateUserPluginAuth: jest.fn(),
@@ -187,26 +186,10 @@ describe('LearnLight authenticated proxy routes', () => {
     });
   });
 
-  it('serves default courses anonymously and ignores an attacker-supplied tenant header', async () => {
-    getLearnLightCanvasIdentity.mockResolvedValue({
-      tenantId: TENANT_TWO,
-      canvasAccountKey: CANVAS_ACCOUNT_KEY,
-    });
-    serviceFetch.mockResolvedValue({ ok: true, status: 200, body: [{ canvasCourseId: 42 }] });
-
-    const response = await request(app)
-      .get('/api/learnlight/courses/current')
-      .set('X-Test-Anonymous', 'true')
-      .set('X-Tenant-Id', TENANT_ONE);
-
-    expect(response.status).toBe(200);
-    expect(getLearnLightCanvasIdentity).toHaveBeenCalledWith(undefined);
-    expect(serviceFetch).toHaveBeenCalledWith('/api/learnlight/courses/current', {
-      headers: { 'X-Tenant-Id': TENANT_TWO },
-    });
-  });
-
   it.each([
+    ['get', '/api/learnlight/canvas'],
+    ['get', '/api/learnlight/courses/current'],
+    ['get', '/api/learnlight/courses/42'],
     ['put', '/api/learnlight/canvas'],
     ['delete', '/api/learnlight/canvas'],
     ['post', '/api/learnlight/feedback'],

@@ -22,6 +22,39 @@ describe('Document Parser', () => {
     });
   });
 
+  test('parseDocument() parses ordered text from pptx slides', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'ppt/slides/slide2.xml',
+      '<p:sld xmlns:a="a"><a:t>Second &amp; final slide</a:t></p:sld>',
+    );
+    zip.file(
+      'ppt/slides/slide1.xml',
+      '<p:sld xmlns:a="a"><a:t>Project overview</a:t><a:t>Target users</a:t></p:sld>',
+    );
+    const tmpPath = path.join(__dirname, 'sample-generated.pptx');
+    await fs.promises.writeFile(tmpPath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+    try {
+      const file = {
+        originalname: 'sample.pptx',
+        path: tmpPath,
+        mimetype: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      } as Express.Multer.File;
+      const document = await parseDocument({ file });
+
+      expect(document).toEqual({
+        bytes: 69,
+        filename: 'sample.pptx',
+        filepath: 'document_parser',
+        images: [],
+        text: 'Slide 1:\nProject overview Target users\n\nSlide 2:\nSecond & final slide',
+      });
+    } finally {
+      await fs.promises.unlink(tmpPath);
+    }
+  });
+
   test('parseDocument() parses text from xlsx', async () => {
     const file = {
       originalname: 'sample.xlsx',

@@ -40,10 +40,12 @@ const PUBLIC_USER_RESPONSE_FIELDS = [
   'avatar',
   'provider',
   'role',
+  'courseRole',
   'plugins',
   'twoFactorEnabled',
   'termsAccepted',
   'personalization',
+  'profile',
   'favorites',
   'skillStates',
   'createdAt',
@@ -86,6 +88,83 @@ const getUserController = async (req, res) => {
     }
   }
   res.status(200).send(userData);
+};
+
+const cleanProfileString = (value, maxLength) =>
+  typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+
+const cleanProfileInterests = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .filter((interest) => typeof interest === 'string')
+        .map((interest) => interest.trim().slice(0, 120))
+        .filter(Boolean),
+    ),
+  ].slice(0, 30);
+};
+
+const cleanProfileUrl = (value) => {
+  const trimmed = cleanProfileString(value, 2048);
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const updateUserProfileController = async (req, res) => {
+  const input = req.body ?? {};
+  const stringFields = ['preferredName', 'bio', 'website', 'github'];
+  if (
+    stringFields.some((field) => input[field] !== undefined && typeof input[field] !== 'string') ||
+    (input.interests !== undefined && !Array.isArray(input.interests))
+  ) {
+    return res.status(400).json({ message: 'Invalid profile data' });
+  }
+
+  const website = input.website === undefined ? undefined : cleanProfileUrl(input.website);
+  if (input.website !== undefined && website === null) {
+    return res.status(400).json({ message: 'Website must be an http(s) URL' });
+  }
+  const github = input.github === undefined ? undefined : cleanProfileUrl(input.github);
+  if (input.github !== undefined && github === null) {
+    return res.status(400).json({ message: 'GitHub must be an http(s) URL' });
+  }
+
+  try {
+    const update = {};
+    if (input.preferredName !== undefined) {
+      update['profile.preferredName'] = cleanProfileString(input.preferredName, 120);
+    }
+    if (input.interests !== undefined) {
+      update['profile.interests'] = cleanProfileInterests(input.interests);
+    }
+    if (input.bio !== undefined) {
+      update['profile.bio'] = cleanProfileString(input.bio, 4000);
+    }
+    if (input.website !== undefined) {
+      update['profile.website'] = website;
+    }
+    if (input.github !== undefined) {
+      update['profile.github'] = github;
+    }
+    const updatedUser = await db.updateUser(req.user.id, update);
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    return res.status(200).json(sanitizeUserForResponse(updatedUser));
+  } catch (error) {
+    logger.error('[updateUserProfileController] Error updating profile:', error);
+    return res.status(500).json({ message: 'Error updating profile' });
+  }
 };
 
 const getTermsStatusController = async (req, res) => {
@@ -609,6 +688,7 @@ const maybeUninstallOAuthMCP = async (userId, pluginKey, appConfig) => {
 
 module.exports = {
   getUserController,
+  updateUserProfileController,
   getTermsStatusController,
   acceptTermsController,
   deleteUserController,

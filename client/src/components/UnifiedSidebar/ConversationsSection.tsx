@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState, useMemo, memo, lazy, Suspense, useRef } from 'react';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
 import { useMediaQuery } from '@librechat/client';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, ChevronRight, SquarePen } from 'lucide-react';
-import {
-  Constants,
-  Permissions,
-  PermissionTypes,
-  getConversationCourseId,
-} from 'librechat-data-provider';
+import { Constants, Permissions, PermissionTypes } from 'librechat-data-provider';
 import type { InfiniteQueryObserverResult } from '@tanstack/react-query';
 import type { ConversationListResponse, TConversation } from 'librechat-data-provider';
 import type { List } from 'react-virtualized';
@@ -22,22 +17,15 @@ import {
 } from '~/hooks';
 import {
   getPendingCourse,
-  usePendingCourse,
   clearPendingCourse,
   iconButtonClassName,
 } from '~/components/LearnLight/utils';
-import { recordCourseChat, useCourseChatMap } from '~/components/LearnLight/chats';
-import {
-  useConversationsInfiniteQuery,
-  useGetConvoIdQuery,
-  useGetStartupConfig,
-  useTitleGeneration,
-} from '~/data-provider';
+import { recordCourseChat } from '~/components/LearnLight/chats';
+import { useConversationsInfiniteQuery, useTitleGeneration } from '~/data-provider';
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
-import CoursePanel from '~/components/LearnLight/CoursePanel';
-import { useCanvasConnectionQuery } from '~/data-provider/LearnLight';
+import NativeCoursePanel from '~/components/Courses/NativeCoursePanel';
 import { Conversations } from '~/components/Conversations';
 import Convo from '~/components/Conversations/Convo';
 import SearchBar from '~/components/Nav/SearchBar';
@@ -52,18 +40,16 @@ const ConversationsSection = memo(() => {
   const localize = useLocalize();
   const { newConversation } = useNewConvo();
   const { courseId, conversationId } = useParams();
+  const location = useLocation();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const setSidebarExpanded = useSetRecoilState(store.sidebarExpanded);
   const { isAuthenticated } = useAuthContext();
-  const { data: startupConfig } = useGetStartupConfig();
-  const { data: canvasConnection } = useCanvasConnectionQuery();
   useTitleGeneration(isAuthenticated);
 
   const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
   const [panelPage, setPanelPage] = useState<'home' | 'chats'>('home');
   const [showLoading, setShowLoading] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
-  const chatMap = useCourseChatMap();
 
   const hasAccessToBookmarks = useHasAccess({
     permissionType: PermissionTypes.BOOKMARKS,
@@ -120,34 +106,6 @@ const ConversationsSection = memo(() => {
     [conversations],
   );
 
-  const pendingCourseId = usePendingCourse();
-
-  const hasOpenConvo = conversationId != null && conversationId !== Constants.NEW_CONVO;
-  const { data: activeConvo } = useGetConvoIdQuery(
-    conversationId ?? '',
-    {
-      enabled: hasOpenConvo,
-    },
-    canvasConnection?.canvasAccountKey,
-  );
-
-  const activeCourseId = useMemo(() => {
-    if (courseId != null) {
-      const parsed = Number.parseInt(courseId, 10);
-      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-    }
-    if (conversationId == null) {
-      return null;
-    }
-    if (conversationId !== Constants.NEW_CONVO) {
-      return (
-        chatMap[conversationId] ??
-        (activeConvo?.canvasAccountCurrent === true ? getConversationCourseId(activeConvo) : null)
-      );
-    }
-    return pendingCourseId;
-  }, [courseId, conversationId, chatMap, activeConvo, pendingCourseId]);
-
   const submission = useRecoilValue(store.submissionByIndex(0));
 
   const prevConvoRef = useRef(conversationId);
@@ -172,18 +130,14 @@ const ConversationsSection = memo(() => {
     clearPendingCourse();
   }, [conversationId, submission]);
 
-  const showCoursePanel =
-    startupConfig?.learnLightEnabled === true &&
-    canvasConnection?.connected === true &&
-    typeof canvasConnection.canvasAccountKey === 'string' &&
-    activeCourseId != null &&
-    !search.query;
+  const showNativeCoursePanel =
+    courseId != null && location.pathname.startsWith('/workspace/courses/');
 
   useEffect(() => {
-    if (showCoursePanel) {
+    if (showNativeCoursePanel) {
       setPanelPage('home');
     }
-  }, [showCoursePanel]);
+  }, [showNativeCoursePanel]);
 
   const toggleNav = useCallback(() => {
     if (isSmallScreen) {
@@ -226,13 +180,8 @@ const ConversationsSection = memo(() => {
       role="region"
       aria-label={localize('com_ui_chat_history')}
     >
-      {showCoursePanel ? (
-        <CoursePanel
-          canvasCourseId={activeCourseId}
-          canvasAccountKey={canvasConnection.canvasAccountKey as string}
-          conversations={conversations}
-          toggleNav={toggleNav}
-        />
+      {showNativeCoursePanel ? (
+        <NativeCoursePanel toggleNav={toggleNav} />
       ) : (
         <>
           <div className="flex items-center gap-0.5 px-3">

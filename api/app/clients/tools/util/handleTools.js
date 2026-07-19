@@ -1,4 +1,5 @@
-const { logger } = require('@librechat/data-schemas');
+const mongoose = require('mongoose');
+const { logger, createModels } = require('@librechat/data-schemas');
 const { Calculator, createSearchTool, createCodeExecutionTool } = require('@librechat/agents');
 const {
   checkAccess,
@@ -7,8 +8,11 @@ const {
   mcpToolPattern,
   loadWebSearchAuth,
   createLearnLightTool,
+  createCourseService,
+  createNativeCourseTool,
   isLearnLightEnabled,
   isLearnLightToolKey,
+  isNativeCourseToolKey,
   buildInlineMemoryTool,
   getCodeApiAuthHeaders,
   buildImageToolContext,
@@ -56,6 +60,12 @@ const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
 const { getRoleByName, setMemory, deleteMemory, getFormattedMemories } = require('~/models');
+
+let nativeCourseService;
+const getNativeCourseService = () => {
+  nativeCourseService ??= createCourseService(createModels(mongoose));
+  return nativeCourseService;
+};
 
 /**
  * Validates the availability and authentication of tools for a user based on environment variables or user-specific plugin authentication values.
@@ -361,6 +371,27 @@ const loadTools = async ({
           onSearchResults,
           onGetHighlights,
           logger,
+        });
+      };
+      continue;
+    } else if (isNativeCourseToolKey(tool)) {
+      requestedTools[tool] = async () => {
+        const requestFileIds = Array.isArray(options.req?.body?.files)
+          ? [
+              ...new Set(
+                options.req.body.files
+                  .map((file) => file?.file_id)
+                  .filter((fileId) => typeof fileId === 'string' && fileId.trim() !== ''),
+              ),
+            ]
+          : [];
+        return createNativeCourseTool(tool, {
+          service: getNativeCourseService(),
+          userId: options.req?.user?.id ?? user,
+          userEmail: options.req?.user?.email ?? '',
+          conversationId: options.req?.body?.conversationId,
+          messageId: options.req?.body?.messageId,
+          requestFileIds,
         });
       };
       continue;

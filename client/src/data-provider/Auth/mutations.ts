@@ -92,6 +92,22 @@ export const useDeleteUserMutation = (
   });
 };
 
+export const useUpdateUserProfileMutation = (): UseMutationResult<
+  t.TUser,
+  unknown,
+  t.TUpdateUserProfileRequest,
+  unknown
+> => {
+  const queryClient = useQueryClient();
+  const setUser = useSetRecoilState(store.user);
+  return useMutation((payload) => dataService.updateUserProfile(payload), {
+    onSuccess: (user) => {
+      queryClient.setQueryData([QueryKeys.user], user);
+      setUser(user);
+    },
+  });
+};
+
 export const useEnableTwoFactorMutation = (): UseMutationResult<
   t.TEnable2FAResponse,
   unknown,

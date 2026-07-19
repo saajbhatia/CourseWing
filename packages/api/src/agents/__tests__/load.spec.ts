@@ -11,6 +11,7 @@ import type {
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import type { LoadAgentParams, LoadAgentDeps } from '../load';
+import { nativeCourseToolKeys } from '../../courses';
 import { learnLightToolKeys } from '../../learnlight';
 import { loadAddedAgent } from '../added';
 import { loadAgent } from '../load';
@@ -21,10 +22,12 @@ let getAgent: ReturnType<typeof createMethods>['getAgent'];
 let previousLearnLightEnabled: string | undefined;
 
 const mockGetMCPServerTools = jest.fn();
+const mockHasNativeCourseAccess = jest.fn<Promise<boolean>, [string, string?]>();
 
 const deps: LoadAgentDeps = {
   getAgent: (searchParameter) => getAgent(searchParameter) as Promise<LibreChatAgent | null>,
   getMCPServerTools: mockGetMCPServerTools,
+  hasNativeCourseAccess: mockHasNativeCourseAccess,
 };
 
 describe('loadAgent', () => {
@@ -50,6 +53,7 @@ describe('loadAgent', () => {
     process.env.LEARNLIGHT_ENABLED = 'false';
     await Agent.deleteMany({});
     jest.clearAllMocks();
+    mockHasNativeCourseAccess.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -141,6 +145,25 @@ describe('loadAgent', () => {
     }
   });
 
+  test('should add native course tools to an authorized ephemeral general chat', async () => {
+    mockHasNativeCourseAccess.mockResolvedValue(true);
+
+    const result = await loadAgent(
+      {
+        req: { user: { id: 'student-1', email: 'student@example.com' } },
+        agent_id: Constants.EPHEMERAL_AGENT_ID as string,
+        endpoint: 'openai',
+        model_parameters: { model: 'gpt-4' } as unknown as AgentModelParameters,
+      },
+      deps,
+    );
+
+    expect(mockHasNativeCourseAccess).toHaveBeenCalledWith('student-1', 'student@example.com');
+    expect(result?.tools).toEqual(expect.arrayContaining([...nativeCourseToolKeys]));
+    expect(result?.instructions).toContain('private implementation details');
+    expect(result?.instructions).toContain('do not print them in the user-facing answer');
+  });
+
   test('should skip cached tools for servers made request-scoped by a config overlay', async () => {
     const { EPHEMERAL_AGENT_ID } = Constants;
 
@@ -224,6 +247,35 @@ describe('loadAgent', () => {
     expect(result!.name).toBe('Test Agent');
     expect(String(result!.author)).toBe(userId.toString());
     expect(result!.version).toBe(1);
+  });
+
+  test('should overlay native course tools on a persistent agent without storing them', async () => {
+    mockHasNativeCourseAccess.mockResolvedValue(true);
+    const userId = new mongoose.Types.ObjectId();
+    const agentId = `agent_${uuidv4()}`;
+
+    await createAgent({
+      id: agentId,
+      name: 'Student Agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: userId,
+      tools: ['web_search'],
+    });
+
+    const result = await loadAgent(
+      {
+        req: { user: { id: userId.toString(), email: 'student@example.com' } },
+        agent_id: agentId,
+        endpoint: 'agents',
+      },
+      deps,
+    );
+
+    expect(result?.tools).toEqual(['web_search', ...nativeCourseToolKeys]);
+    expect(result?.instructions).toContain('private implementation details');
+    const storedAgent = await getAgent({ id: agentId });
+    expect(storedAgent?.tools).toEqual(['web_search']);
   });
 
   test('should apply LearnLight course instructions and tools to a persistent agent', async () => {

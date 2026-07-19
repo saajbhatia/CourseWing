@@ -340,13 +340,25 @@ const registerUser = async (user, additionalData = {}) => {
   }
 
   const { email, password, name, username } = result.data;
-  const { provider, ...trustedAdditionalData } = additionalData ?? {};
+  const { provider, courseInvite, ...trustedAdditionalData } = additionalData ?? {};
+  const normalizedEmail = email.trim().toLowerCase();
+  const hasMatchingCourseInvite =
+    (courseInvite?.type === 'course_share' ||
+      (courseInvite?.type === 'course_invite' &&
+        typeof courseInvite.email === 'string' &&
+        courseInvite.email.trim().toLowerCase() === normalizedEmail)) &&
+    typeof courseInvite.identifier === 'string' &&
+    courseInvite.identifier.length > 0 &&
+    new Date(courseInvite.expiresAt).getTime() > Date.now();
 
   let newUserId;
   try {
     const tenantId = getTenantId();
     const appConfig = await getAppConfig(tenantId ? { tenantId } : {});
-    if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
+    if (
+      !isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains) &&
+      !hasMatchingCourseInvite
+    ) {
       const errorMessage =
         'The email address provided cannot be used. Please use a different email address.';
       logger.error(`[registerUser] [Registration not allowed] [Email: ${user.email}]`);
@@ -364,7 +376,11 @@ const registerUser = async (user, additionalData = {}) => {
 
       // Sleep for 1 second
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      return { status: 200, message: genericVerificationMessage };
+      return {
+        status: 200,
+        message: genericVerificationMessage,
+        ...(hasMatchingCourseInvite ? { user: existingUser } : {}),
+      };
     }
 
     //determine if this is the first registered user (not counting anonymous_user)
@@ -397,7 +413,7 @@ const registerUser = async (user, additionalData = {}) => {
       await updateUser(newUserId, { emailVerified: true });
     }
 
-    return { status: 200, message: genericVerificationMessage };
+    return { status: 200, message: genericVerificationMessage, user: newUser };
   } catch (err) {
     logger.error('[registerUser] Error in registering user:', err);
     if (newUserId) {

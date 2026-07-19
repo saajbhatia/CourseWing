@@ -32,7 +32,7 @@ import {
 import { ToolCallsMapProvider } from '~/Providers';
 import ChatView from '~/components/Chat/ChatView';
 import { NotificationSeverity } from '~/common';
-import { useAuthContext } from '~/hooks/AuthContext';
+import useAuthRedirect from './useAuthRedirect';
 import temporaryStore from '~/store/temporary';
 import store from '~/store';
 
@@ -41,7 +41,7 @@ const isValidChatProjectId = (projectId: string | null): projectId is string =>
 
 export default function ChatRoute() {
   const { data: startupConfig } = useGetStartupConfig();
-  const { isAuthenticated, isGuest, user, roles } = useAuthContext();
+  const { isAuthenticated, user, roles } = useAuthRedirect();
   const queryClient = useQueryClient();
 
   const defaultTemporaryChat = useRecoilValue(temporaryStore.defaultTemporaryChat);
@@ -115,14 +115,14 @@ export default function ChatRoute() {
   }, [projectScopeMissing, setSearchParams]);
 
   const modelsQuery = useGetModelsQuery({
-    enabled: isAuthenticated || isGuest,
+    enabled: isAuthenticated,
     refetchOnMount: 'always',
   });
   const initialConvoQuery = useGetConvoIdQuery(conversationId, {
     enabled:
       isAuthenticated && conversationId !== Constants.NEW_CONVO && !hasSetConversation.current,
   });
-  const endpointsQuery = useGetEndpointsQuery({ enabled: isAuthenticated || isGuest });
+  const endpointsQuery = useGetEndpointsQuery({ enabled: isAuthenticated });
   const assistantListMap = useAssistantListMap();
 
   const isTemporaryChat = isTemporaryConversation(conversation);
@@ -142,7 +142,7 @@ export default function ChatRoute() {
    */
   useEffect(() => {
     // Wait for roles to load so hasAgentAccess has a definitive value in useNewConvo
-    const rolesLoaded = roles?.USER != null || isGuest;
+    const rolesLoaded = roles?.USER != null;
     const isNewConvo = conversationId === Constants.NEW_CONVO;
     const isDraftNewConvo = conversation?.conversationId === Constants.NEW_CONVO;
     const draftProjectMismatch = verifiedChatProjectId
@@ -259,7 +259,6 @@ export default function ChatRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     roles,
-    isGuest,
     startupConfig,
     initialConvoQuery.data,
     initialConvoQuery.isError,
@@ -283,7 +282,7 @@ export default function ChatRoute() {
     );
   }
 
-  if (!isAuthenticated && !isGuest) {
+  if (!isAuthenticated) {
     return null;
   }
 

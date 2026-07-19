@@ -25,7 +25,6 @@ import useQueryParams from './useQueryParams';
 import { useChatContext, useChatFormContext } from '~/Providers';
 import useSubmitMessage from '~/hooks/Messages/useSubmitMessage';
 import useDefaultConvo from '~/hooks/Conversations/useDefaultConvo';
-import { GUEST_CHAT_HANDOFF_KEY } from '~/utils/guestChatHandoff';
 import store from '~/store';
 
 // Other mocks
@@ -527,128 +526,6 @@ describe('useQueryParams', () => {
     expect(sessionStorage.getItem('learnlight:chat-handoff:handoff123')).toBeNull();
   });
 
-  it('restores and submits a private course guest draft when its URL handoff was consumed before login', () => {
-    const prefix = 'Canvas course ID: 42\nCurrent Canvas course: Chemistry';
-    const mockSetValue = jest.fn();
-    const mockSubmitMessage = jest.fn();
-    const mockSetSearchParams = jest.fn();
-    const mockTextAreaRef = {
-      current: {
-        focus: jest.fn(),
-        setSelectionRange: jest.fn(),
-      } as unknown as HTMLTextAreaElement,
-    };
-    (useSearchParams as jest.Mock).mockReturnValue([
-      new URLSearchParams({ learnlight: 'already-consumed-123' }),
-      mockSetSearchParams,
-    ]);
-    (useChatFormContext as jest.Mock).mockReturnValue({
-      setValue: mockSetValue,
-      getValues: jest.fn().mockReturnValue(''),
-      handleSubmit: jest.fn((callback) => () => callback({ text: 'private guest draft' })),
-    });
-    (useSubmitMessage as jest.Mock).mockReturnValue({ submitMessage: mockSubmitMessage });
-    (useChatContext as jest.Mock).mockReturnValue({
-      conversation: {
-        endpoint: 'bedrock',
-        model: 'us.anthropic.claude-sonnet-4-6',
-        promptPrefix: prefix,
-      },
-      newConversation: jest.fn(),
-    });
-    (useQueryClient as jest.Mock).mockReturnValue({
-      getQueryData: jest.fn().mockImplementation((key) => {
-        const value = Array.isArray(key) ? key[0] : key;
-        if (value === 'startupConfig') {
-          return { interface: { autoSubmitFromUrl: false }, modelSpecs: { list: [] } };
-        }
-        if (value === 'endpoints') {
-          return { bedrock: { userProvide: false } };
-        }
-        return null;
-      }),
-    });
-    sessionStorage.setItem(
-      GUEST_CHAT_HANDOFF_KEY,
-      JSON.stringify({
-        version: 1,
-        createdAt: Date.now(),
-        prompt: 'private guest draft',
-        settings: {
-          endpoint: 'bedrock',
-          model: 'us.anthropic.claude-sonnet-4-6',
-          promptPrefix: prefix,
-        },
-      }),
-    );
-    sessionStorage.setItem('learnlight:pendingCourse', '42');
-    sessionStorage.setItem('learnlight:pendingGreeting', 'Ready to study?');
-
-    renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(mockSetValue).toHaveBeenCalledWith(
-      'text',
-      'private guest draft',
-      expect.objectContaining({ shouldValidate: true }),
-    );
-    expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem(GUEST_CHAT_HANDOFF_KEY)).toBeNull();
-    expect(sessionStorage.getItem('learnlight:pendingCourse')).toBe('42');
-    expect(sessionStorage.getItem('learnlight:pendingGreeting')).toBe('Ready to study?');
-    expect(mockSetSearchParams).toHaveBeenCalledWith(new URLSearchParams(), { replace: true });
-  });
-
-  it('waits for startup config before consuming and submitting a guest handoff', () => {
-    const mockSubmitMessage = jest.fn();
-    const mockTextAreaRef = {
-      current: {
-        focus: jest.fn(),
-        setSelectionRange: jest.fn(),
-      } as unknown as HTMLTextAreaElement,
-    };
-    let startupConfig: { modelSpecs: { list: never[] } } | null = null;
-    (useQueryClient as jest.Mock).mockReturnValue({
-      getQueryData: jest.fn().mockImplementation((key) => {
-        const value = Array.isArray(key) ? key[0] : key;
-        return value === 'startupConfig' ? startupConfig : null;
-      }),
-    });
-    (useChatFormContext as jest.Mock).mockReturnValue({
-      setValue: jest.fn(),
-      getValues: jest.fn().mockReturnValue(''),
-      handleSubmit: jest.fn((callback) => () => callback({ text: 'slow guest draft' })),
-    });
-    (useSubmitMessage as jest.Mock).mockReturnValue({ submitMessage: mockSubmitMessage });
-    sessionStorage.setItem(
-      GUEST_CHAT_HANDOFF_KEY,
-      JSON.stringify({
-        version: 1,
-        createdAt: Date.now(),
-        prompt: 'slow guest draft',
-        settings: {},
-      }),
-    );
-
-    renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
-    act(() => {
-      jest.advanceTimersByTime(6_000);
-    });
-
-    expect(sessionStorage.getItem(GUEST_CHAT_HANDOFF_KEY)).not.toBeNull();
-    expect(mockSubmitMessage).not.toHaveBeenCalled();
-
-    startupConfig = { modelSpecs: { list: [] } };
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(sessionStorage.getItem(GUEST_CHAT_HANDOFF_KEY)).toBeNull();
-    expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-  });
-
   it('waits for startup config before consuming an explicit course prompt', () => {
     const prefix = 'Canvas course ID: 42\nCurrent Canvas course: Chemistry';
     const handoffId = 'course-slow-123';
@@ -685,7 +562,10 @@ describe('useQueryParams', () => {
     });
     (useSubmitMessage as jest.Mock).mockReturnValue({ submitMessage: mockSubmitMessage });
     const { useAuthContext } = jest.requireMock('~/hooks/AuthContext');
-    (useAuthContext as jest.Mock).mockReturnValue({ user: undefined, isAuthenticated: false });
+    (useAuthContext as jest.Mock).mockReturnValue({
+      user: { id: 'user-1' },
+      isAuthenticated: true,
+    });
     sessionStorage.setItem(
       `learnlight:chat-handoff:${handoffId}`,
       JSON.stringify({ promptPrefix: prefix, prompt: 'Review chapter 4' }),
@@ -706,111 +586,7 @@ describe('useQueryParams', () => {
 
     expect(sessionStorage.getItem(`learnlight:chat-handoff:${handoffId}`)).toBeNull();
     expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-    expect(mockSetSearchParams).not.toHaveBeenCalled();
-  });
-
-  it('switches to a restored guest model spec before submitting', () => {
-    const prefix = 'Canvas course ID: 42\nCurrent Canvas course: Chemistry';
-    const mockSubmitMessage = jest.fn();
-    const mockNewConversation = jest.fn();
-    const mockTextAreaRef = {
-      current: {
-        focus: jest.fn(),
-        setSelectionRange: jest.fn(),
-      } as unknown as HTMLTextAreaElement,
-    };
-    (useChatFormContext as jest.Mock).mockReturnValue({
-      setValue: jest.fn(),
-      getValues: jest.fn().mockReturnValue(''),
-      handleSubmit: jest.fn((callback) => () => callback({ text: 'Use the course tutor' })),
-    });
-    (useSubmitMessage as jest.Mock).mockReturnValue({ submitMessage: mockSubmitMessage });
-    (useChatContext as jest.Mock).mockReturnValue({
-      conversation: { spec: 'other', promptPrefix: prefix, endpoint: 'bedrock', model: 'other' },
-      newConversation: mockNewConversation,
-    });
-    (useQueryClient as jest.Mock).mockReturnValue({
-      getQueryData: jest.fn().mockImplementation((key) => {
-        const value = Array.isArray(key) ? key[0] : key;
-        if (value === 'startupConfig') {
-          return {
-            modelSpecs: {
-              list: [
-                {
-                  name: 'course-tutor',
-                  preset: { endpoint: 'bedrock', model: 'sonnet' },
-                },
-              ],
-            },
-          };
-        }
-        if (value === 'endpoints') {
-          return { bedrock: { userProvide: false } };
-        }
-        return null;
-      }),
-    });
-    sessionStorage.setItem(
-      GUEST_CHAT_HANDOFF_KEY,
-      JSON.stringify({
-        version: 1,
-        createdAt: Date.now(),
-        prompt: 'Use the course tutor',
-        settings: { spec: 'course-tutor', promptPrefix: prefix },
-      }),
-    );
-
-    const { rerender } = renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(mockNewConversation).toHaveBeenCalledTimes(1);
-    expect(mockSubmitMessage).not.toHaveBeenCalled();
-
-    (useChatContext as jest.Mock).mockReturnValue({
-      conversation: {
-        spec: 'course-tutor',
-        promptPrefix: prefix,
-        endpoint: 'bedrock',
-        model: 'sonnet',
-      },
-      newConversation: mockNewConversation,
-    });
-    rerender();
-
-    expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not let URL cleanup overwrite a guest login redirect after immediate submission', () => {
-    const mockSubmitMessage = jest.fn();
-    const mockSetSearchParams = jest.fn();
-    const mockTextAreaRef = {
-      current: {
-        focus: jest.fn(),
-        setSelectionRange: jest.fn(),
-      } as unknown as HTMLTextAreaElement,
-    };
-    (useSearchParams as jest.Mock).mockReturnValue([
-      new URLSearchParams({ q: 'Sign in and send this', submit: 'true' }),
-      mockSetSearchParams,
-    ]);
-    (useChatFormContext as jest.Mock).mockReturnValue({
-      setValue: jest.fn(),
-      getValues: jest.fn().mockReturnValue(''),
-      handleSubmit: jest.fn((callback) => () => callback({ text: 'Sign in and send this' })),
-    });
-    (useSubmitMessage as jest.Mock).mockReturnValue({ submitMessage: mockSubmitMessage });
-    const { useAuthContext } = jest.requireMock('~/hooks/AuthContext');
-    (useAuthContext as jest.Mock).mockReturnValue({ user: undefined, isAuthenticated: false });
-
-    renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-    expect(mockSetSearchParams).not.toHaveBeenCalled();
+    expect(mockSetSearchParams).toHaveBeenCalledWith(new URLSearchParams(), { replace: true });
   });
 
   it.each([

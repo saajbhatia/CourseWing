@@ -65,6 +65,11 @@ const userSchema: Schema<IUser> = new Schema<IUser>(
       type: String,
       default: SystemRoles.USER,
     },
+    courseRole: {
+      type: String,
+      enum: ['teacher', 'student'],
+      default: 'student',
+    },
     googleId: {
       type: String,
     },
@@ -137,6 +142,16 @@ const userSchema: Schema<IUser> = new Schema<IUser>(
           type: Boolean,
           default: true,
         },
+      },
+      default: {},
+    },
+    profile: {
+      type: {
+        preferredName: { type: String, trim: true, maxlength: 120, default: '' },
+        interests: [{ type: String, trim: true, maxlength: 120 }],
+        bio: { type: String, trim: true, maxlength: 4000, default: '' },
+        website: { type: String, trim: true, maxlength: 2048, default: '' },
+        github: { type: String, trim: true, maxlength: 2048, default: '' },
       },
       default: {},
     },

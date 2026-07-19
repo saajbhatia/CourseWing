@@ -58,6 +58,9 @@ function getParserForMimeType(mimetype: string): FileParseFn | undefined {
   if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     return wordDocToText;
   }
+  if (mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+    return presentationToText;
+  }
   if (
     excelMimeTypes.test(mimetype) ||
     mimetype === 'application/vnd.oasis.opendocument.spreadsheet'
@@ -105,6 +108,95 @@ async function wordDocToText(file: Express.Multer.File): Promise<string> {
   return rawText.value;
 }
 
+/** Parses a PPTX deck into ordered, slide-delimited text. */
+async function presentationToText(file: Express.Multer.File): Promise<string> {
+  const buffer = await fs.promises.readFile(file.path);
+  await assertSafeZipSize(buffer, { name: file.originalname ?? 'presentation' });
+  const slides = await extractPresentationSlides(file.path);
+  return slides
+    .sort((left, right) => left.number - right.number)
+    .map(({ number, xml }) => {
+      const text = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
+        .map((match) => decodeXmlEntities(match[1].replace(/<[^>]+>/g, '')).trim())
+        .filter(Boolean)
+        .join(' ');
+      return text ? `Slide ${number}:\n${text}` : '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function extractPresentationSlides(
+  filePath: string,
+): Promise<Array<{ number: number; xml: string }>> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(filePath, { lazyEntries: true }, (err, zipfile) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (!zipfile) {
+        reject(new Error('Failed to open presentation'));
+        return;
+      }
+
+      let settled = false;
+      let totalBytes = 0;
+      const slides: Array<{ number: number; xml: string }> = [];
+      const finish = (error?: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        zipfile.close();
+        if (error) {
+          reject(error);
+        } else {
+          resolve(slides);
+        }
+      };
+
+      zipfile.readEntry();
+      zipfile.on('entry', (entry: yauzl.Entry) => {
+        const match = entry.fileName.match(/^ppt\/slides\/slide(\d+)\.xml$/);
+        if (!match) {
+          zipfile.readEntry();
+          return;
+        }
+        zipfile.openReadStream(entry, (streamError, readStream) => {
+          if (streamError || !readStream) {
+            finish(streamError ?? new Error('Failed to read a presentation slide'));
+            return;
+          }
+          const chunks: Buffer[] = [];
+          readStream.on('data', (chunk: Buffer) => {
+            totalBytes += chunk.byteLength;
+            if (totalBytes > ODT_MAX_DECOMPRESSED_SIZE) {
+              readStream.destroy(
+                new Error(
+                  `Presentation slide XML exceeds the ${ODT_MAX_DECOMPRESSED_SIZE / megabyte}MB decompressed limit`,
+                ),
+              );
+              return;
+            }
+            chunks.push(chunk);
+          });
+          readStream.on('error', finish);
+          readStream.on('end', () => {
+            slides.push({
+              number: Number(match[1]),
+              xml: Buffer.concat(chunks).toString('utf8'),
+            });
+            zipfile.readEntry();
+          });
+        });
+      });
+      zipfile.on('error', finish);
+      zipfile.on('end', () => finish());
+    });
+  });
+}
+
 /** Parses Excel sheet, returns text inside. */
 async function excelSheetToText(file: Express.Multer.File): Promise<string> {
   // xlsx CDN build (0.20.x) does not bind fs internally when dynamically imported;
@@ -149,16 +241,25 @@ async function odtToText(file: Express.Multer.File): Promise<string> {
     .replace(/<text:tab\/>/g, '\t')
     .replace(/<text:s[^>]*\/>/g, ' ')
     .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
+    .replace(/&(?:lt|gt|amp|quot|apos|#\d+|#x[\da-f]+);/gi, (entity) => decodeXmlEntities(entity))
     .replace(/[ \t]+/g, ' ')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_match, code: string) =>
+      String.fromCodePoint(Number.parseInt(code, 16)),
+    )
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 /**

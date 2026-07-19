@@ -12,6 +12,10 @@ import AuthLayout from '~/components/Auth/AuthLayout';
 
 jest.mock('librechat-data-provider/react-query');
 
+afterEach(() => {
+  window.history.replaceState({}, '', '/');
+});
+
 const mockStartupConfig = {
   isFetching: false,
   isLoading: false,
@@ -154,6 +158,40 @@ test('renders registration form', () => {
     'href',
     'mock-server/oauth/saml',
   );
+});
+
+test('shows course invitation context and locks the invited email', () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/register?token=private-token&email=Invited.Student%40Example.com&courseName=Project%20Studio',
+  );
+
+  const { getByRole } = setup();
+  const email = getByRole('textbox', { name: /Email/i });
+
+  expect(getByRole('status')).toHaveTextContent('Join Project Studio');
+  expect(getByRole('status')).toHaveTextContent(
+    'Create your account with invited.student@example.com to join the course.',
+  );
+  expect(email).toHaveValue('invited.student@example.com');
+  expect(email).toHaveAttribute('readonly');
+});
+
+test('lets a student enter their own email from a course share link', () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/register?token=course-share-token&courseName=Project%20Studio',
+  );
+
+  const { getByRole } = setup();
+  const email = getByRole('textbox', { name: /Email/i });
+
+  expect(getByRole('status')).toHaveTextContent('Join Project Studio');
+  expect(getByRole('status')).toHaveTextContent('Create your account to join the course.');
+  expect(email).toHaveValue('');
+  expect(email).not.toHaveAttribute('readonly');
 });
 
 // test('calls registerUser.mutate on registration', async () => {

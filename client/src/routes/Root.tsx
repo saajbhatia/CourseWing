@@ -25,6 +25,7 @@ import { TermsAndConditionsModal } from '~/components/ui';
 import { useHealthCheck } from '~/data-provider';
 import { Banner } from '~/components/Banners';
 import store from '~/store';
+import { shouldBlockContentForSidebar } from './rootLayout';
 
 /** Isolates keyboard shortcut listeners so they only mount after auth. */
 function KeyboardShortcutsProvider() {
@@ -40,10 +41,16 @@ function KeyboardShortcutsProvider() {
 export default function Root() {
   const [showTerms, setShowTerms] = useState(false);
   const [bannerHeight, setBannerHeight] = useState(0);
+  const isEmbedded = window.self !== window.top;
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
+  const shouldBlockContent = shouldBlockContentForSidebar({
+    isEmbedded,
+    isSmallScreen,
+    sidebarExpanded,
+  });
 
-  const { isAuthenticated, isGuest, logout } = useAuthContext();
+  const { isAuthenticated, logout } = useAuthContext();
 
   useHealthCheck(isAuthenticated);
 
@@ -73,7 +80,7 @@ export default function Root() {
     logout('/login?redirect=false');
   };
 
-  if (!isAuthenticated && !isGuest) {
+  if (!isAuthenticated) {
     return null;
   }
 
@@ -83,18 +90,20 @@ export default function Root() {
         <AssistantsMapContext.Provider value={assistantsMap}>
           <AgentsMapContext.Provider value={agentsMap}>
             <PromptGroupsProvider>
-              <Banner onHeightChange={setBannerHeight} />
-              <div className="flex" style={{ height: `calc(100dvh - ${bannerHeight}px)` }}>
+              {isEmbedded ? null : <Banner onHeightChange={setBannerHeight} />}
+              <div
+                className="flex"
+                style={{ height: isEmbedded ? '100dvh' : `calc(100dvh - ${bannerHeight}px)` }}
+              >
                 <div className="relative z-0 flex h-full w-full overflow-hidden">
-                  <UnifiedSidebar />
+                  {isEmbedded ? null : <UnifiedSidebar />}
                   <div
                     className="relative flex h-full max-w-full flex-1 flex-col overflow-hidden"
                     style={{
-                      transform:
-                        isSmallScreen && sidebarExpanded ? 'translateX(min(85vw, 380px))' : 'none',
+                      transform: shouldBlockContent ? 'translateX(min(85vw, 380px))' : 'none',
                       transition: 'transform 300ms cubic-bezier(0.2, 0, 0, 1)',
                     }}
-                    inert={isSmallScreen && sidebarExpanded ? '' : undefined}
+                    inert={shouldBlockContent ? '' : undefined}
                   >
                     <Outlet />
                   </div>

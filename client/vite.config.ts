@@ -377,11 +377,25 @@ export default defineConfig(({ command }) => ({
     chunkSizeWarningLimit: 1500,
   },
   resolve: {
-    alias: {
-      '~': path.join(__dirname, 'src/'),
-      $fonts: path.resolve(__dirname, 'public/fonts'),
-      'micromark-extension-math': 'micromark-extension-llm-math',
-    },
+    alias: [
+      {
+        find: /^librechat-data-provider$/,
+        replacement: path.resolve(__dirname, '../packages/data-provider/dist/index.mjs'),
+      },
+      {
+        find: /^librechat-data-provider\/react-query$/,
+        replacement: path.resolve(
+          __dirname,
+          '../packages/data-provider/dist/react-query/index.mjs',
+        ),
+      },
+      { find: '~', replacement: path.join(__dirname, 'src/') },
+      { find: '$fonts', replacement: path.resolve(__dirname, 'public/fonts') },
+      {
+        find: 'micromark-extension-math',
+        replacement: 'micromark-extension-llm-math',
+      },
+    ],
   },
 }));
 

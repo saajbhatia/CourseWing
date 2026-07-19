@@ -14,11 +14,19 @@ const mockCreateLearnLightTool = jest.fn((tool, options) => ({
   name: tool,
   tenantId: options.tenantId,
 }));
+const mockNativeCourseService = { name: 'native-course-service' };
+const mockCreateCourseService = jest.fn(() => mockNativeCourseService);
+const mockCreateNativeCourseTool = jest.fn((tool, options) => ({
+  name: tool,
+  requestFileIds: options.requestFileIds,
+}));
 const mockGetLearnLightCanvasIdentity = jest.fn();
 
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
   createLearnLightTool: (...args) => mockCreateLearnLightTool(...args),
+  createCourseService: (...args) => mockCreateCourseService(...args),
+  createNativeCourseTool: (...args) => mockCreateNativeCourseTool(...args),
   isLearnLightEnabled: jest.fn(() => true),
 }));
 
@@ -373,6 +381,47 @@ describe('Tool Handlers', () => {
         'learnlight_get_assignments',
         expect.objectContaining({ tenantId: 'tenant-current' }),
       );
+    });
+
+    it('passes authenticated identity and server-known request file IDs to native course tools', async () => {
+      const userId = fakeUser._id.toString();
+      const req = {
+        user: { id: userId, email: 'student@example.com' },
+        body: {
+          conversationId: 'conversation-1',
+          messageId: 'message-1',
+          files: [
+            { file_id: 'file-a' },
+            { file_id: 'file-a' },
+            { file_id: 'file-b' },
+            { name: 'missing-id.pdf' },
+          ],
+        },
+      };
+
+      const toolMap = await loadTools({
+        user: 'untrusted-fallback-id',
+        tools: ['native_course_record_work'],
+        returnMap: true,
+        options: { req },
+      });
+      const loaded = await toolMap.native_course_record_work();
+
+      expect(mockCreateNativeCourseTool).toHaveBeenCalledWith(
+        'native_course_record_work',
+        expect.objectContaining({
+          service: mockNativeCourseService,
+          userId,
+          userEmail: 'student@example.com',
+          conversationId: 'conversation-1',
+          messageId: 'message-1',
+          requestFileIds: ['file-a', 'file-b'],
+        }),
+      );
+      expect(loaded).toEqual({
+        name: 'native_course_record_work',
+        requestFileIds: ['file-a', 'file-b'],
+      });
     });
 
     it('passes request body to chat MCP tool creation and skips stale cache for BODY-scoped servers', async () => {

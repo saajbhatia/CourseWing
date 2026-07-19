@@ -2,11 +2,6 @@ import { useSyncExternalStore } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { LearnLightAssignment, LearnLightCourseSummary } from '~/data-provider/LearnLight';
 import { Constants } from 'librechat-data-provider';
-import {
-  clearPendingGuestCourseContext,
-  setPendingGuestCourseContext,
-  PENDING_COURSE_KEY,
-} from '~/utils/pendingCourseContext';
 
 export type LearnLightCourseIdentity = Pick<
   LearnLightCourseSummary,
@@ -142,7 +137,6 @@ export function openCourseChat(
       sessionStorage.removeItem(PENDING_GREETING_KEY);
     }
     setPendingCourse(course.canvasCourseId);
-    setPendingGuestCourseContext(course.canvasCourseId, options.promptPrefix);
     handoffId = createCourseChatHandoff({
       promptPrefix: options.promptPrefix,
       ...(options.prompt ? { prompt: options.prompt } : {}),
@@ -167,10 +161,11 @@ export function openCourseChat(
 }
 
 const PENDING_GREETING_KEY = 'learnlight:pendingGreeting';
+const PENDING_COURSE_KEY = 'learnlight:pendingCourse';
 const COURSE_CHAT_HANDOFF_PREFIX = 'learnlight:chat-handoff:';
 const PENDING_COURSE_EVENT = 'learnlight:pending-course-changed';
 
-function createCourseChatHandoff(handoff: CourseChatHandoff): string {
+export function createCourseChatHandoff(handoff: CourseChatHandoff): string {
   const handoffId =
     typeof globalThis.crypto?.randomUUID === 'function'
       ? globalThis.crypto.randomUUID()
@@ -251,7 +246,6 @@ export function clearPendingCourse(): void {
   } catch {
     // Storage may be blocked; the in-memory course panel can still reset safely.
   }
-  clearPendingGuestCourseContext();
   window.dispatchEvent(new Event(PENDING_COURSE_EVENT));
 }
 

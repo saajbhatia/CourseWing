@@ -22,7 +22,9 @@ const getGoogleConfig = (callbackURL) => ({
 
 const googleStrategy = () =>
   new GoogleStrategy(
-    getGoogleConfig(`${process.env.DOMAIN_SERVER}${process.env.GOOGLE_CALLBACK_URL}`),
+    getGoogleConfig(
+      `${process.env.GOOGLE_CALLBACK_ORIGIN || process.env.DOMAIN_SERVER}${process.env.GOOGLE_CALLBACK_URL}`,
+    ),
     googleLogin,
   );
 

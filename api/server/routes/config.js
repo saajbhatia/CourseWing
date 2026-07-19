@@ -218,23 +218,24 @@ router.get('/', async function (req, res) {
       /** @type {Partial<TStartupConfig>} */
       const payload = {
         ...preLoginPayload,
-        // Guest course and assignment handoffs render inside the chat landing page.
-        // This is only a feature-availability bit; Canvas identity and credentials
-        // remain behind the dedicated bounded LearnLight routes.
-        learnLightEnabled: isLearnLightEnabled(),
         socialLogins: baseConfig?.registration?.socialLogins ?? defaultSocialLogins,
         turnstile: baseConfig?.turnstileConfig,
         ...(rum ? { rum } : {}),
       };
 
       const interfaceConfig = baseConfig?.interfaceConfig;
-      /** Guests may view the chat UI, so expose interface config and model specs pre-login. */
-      if (interfaceConfig) {
-        payload.interface = interfaceConfig;
-      }
-      const guestModelSpecs = sanitizeModelSpecs(excludeHiddenModelSpecs(baseConfig?.modelSpecs));
-      if (guestModelSpecs) {
-        payload.modelSpecs = guestModelSpecs;
+      const buildInfoDisabled = interfaceConfig?.buildInfo === false;
+      if (interfaceConfig?.privacyPolicy || interfaceConfig?.termsOfService || buildInfoDisabled) {
+        payload.interface = {};
+        if (interfaceConfig.privacyPolicy) {
+          payload.interface.privacyPolicy = interfaceConfig.privacyPolicy;
+        }
+        if (interfaceConfig.termsOfService) {
+          payload.interface.termsOfService = interfaceConfig.termsOfService;
+        }
+        if (buildInfoDisabled) {
+          payload.interface.buildInfo = false;
+        }
       }
 
       const unauthBuildInfo = buildBuildInfoPayload(interfaceConfig);

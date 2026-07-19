@@ -149,6 +149,10 @@ export function getUser(): Promise<t.TUser> {
   return request.get(endpoints.user());
 }
 
+export function updateUserProfile(payload: t.TUpdateUserProfileRequest): Promise<t.TUser> {
+  return request.patch(endpoints.userProfile(), payload);
+}
+
 export function getUserBalance(): Promise<t.TBalanceResponse> {
   return request.get(endpoints.balance());
 }

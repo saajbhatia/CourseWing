@@ -214,6 +214,16 @@ export type TBackupCode = {
   usedAt: Date | null;
 };
 
+export type TUserProfile = {
+  preferredName?: string;
+  interests?: string[];
+  bio?: string;
+  website?: string;
+  github?: string;
+};
+
+export type TUpdateUserProfileRequest = Partial<TUserProfile>;
+
 export type TUser = {
   id: string;
   username: string;
@@ -221,6 +231,7 @@ export type TUser = {
   name: string;
   avatar: string;
   role: string;
+  courseRole?: 'teacher' | 'student';
   provider: string;
   tenantId?: string;
   plugins?: string[];
@@ -229,6 +240,7 @@ export type TUser = {
   personalization?: {
     memories?: boolean;
   };
+  profile?: TUserProfile;
   createdAt: string;
   updatedAt: string;
 };

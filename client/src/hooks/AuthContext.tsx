@@ -37,23 +37,6 @@ if (import.meta.hot) {
   import.meta.hot.data.__AuthContext = AuthContext;
 }
 
-const PRIOR_SESSION_KEY = 'hasPriorSession';
-
-/** Returning users get the classic redirect-to-login; only first-time visitors browse as guests. */
-const hasPriorSession = () => localStorage.getItem(PRIOR_SESSION_KEY) != null;
-
-/** Routes guests may view without a session; sending a message still requires login. */
-const isGuestViewableRoute = () => {
-  const rawPath = window.location.pathname;
-  const baseUrl = apiBaseUrl();
-  const path =
-    baseUrl && (rawPath === baseUrl || rawPath.startsWith(`${baseUrl}/`))
-      ? rawPath.slice(baseUrl.length) || '/'
-      : rawPath;
-  const isPublicCourse = /^\/courses\/[1-9]\d*$/u.test(path);
-  return isPublicCourse || ((path === '/' || path === '/c/new') && !hasPriorSession());
-};
-
 const AuthContextProvider = ({
   authConfig,
   children,
@@ -67,7 +50,6 @@ const AuthContextProvider = ({
   const [token, setToken] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isGuest, setIsGuest] = useState<boolean>(false);
   const setQueriesEnabled = useSetRecoilState<boolean>(store.queriesEnabled);
 
   const userRoleName = user?.role ?? '';
@@ -94,9 +76,7 @@ const AuthContextProvider = ({
         setTokenHeader(token);
         setIsAuthenticated(isAuthenticated);
         if (isAuthenticated) {
-          setIsGuest(false);
           setQueriesEnabled(true);
-          localStorage.setItem(PRIOR_SESSION_KEY, '1');
         }
 
         const searchParams = new URLSearchParams(window.location.search);
@@ -118,7 +98,11 @@ const AuthContextProvider = ({
       }, 50),
     [navigate, setUser, setQueriesEnabled],
   );
-  const doSetError = useTimeout({ callback: (error) => setError(error as string | undefined) });
+  const setTimedError = useCallback(
+    (error: string | number | boolean | null) => setError(error as string | undefined),
+    [],
+  );
+  const doSetError = useTimeout({ callback: setTimedError });
 
   const loginUser = useLoginUserMutation({
     onSuccess: (data: t.TLoginResponse) => {
@@ -187,9 +171,7 @@ const AuthContextProvider = ({
 
   const userQuery = useGetUserQuery({ enabled: !!(token ?? '') });
 
-  const login = (data: t.TLoginUser) => {
-    loginUser.mutate(data);
-  };
+  const login = useCallback((data: t.TLoginUser) => loginUser.mutate(data), [loginUser]);
 
   const silentRefresh = useCallback(() => {
     if (authConfig?.test === true) {
@@ -225,10 +207,6 @@ const AuthContextProvider = ({
         if (authConfig?.test === true) {
           return;
         }
-        if (isGuestViewableRoute()) {
-          setIsGuest(true);
-          return;
-        }
         navigate(buildLoginRedirectUrl());
       },
       onError: (error) => {
@@ -237,10 +215,6 @@ const AuthContextProvider = ({
         }
         console.log('refreshToken mutation error:', error);
         if (authConfig?.test === true) {
-          return;
-        }
-        if (isGuestViewableRoute()) {
-          setIsGuest(true);
           return;
         }
         navigate(buildLoginRedirectUrl());
@@ -276,6 +250,7 @@ const AuthContextProvider = ({
     navigate,
     silentRefresh,
     setUserContext,
+    doSetError,
   ]);
 
   useEffect(() => {
@@ -309,20 +284,20 @@ const AuthContextProvider = ({
         ...(isCustomRole && customRole ? { [userRoleName]: customRole } : {}),
       },
       isAuthenticated,
-      isGuest,
     }),
 
     [
       user,
       error,
       isAuthenticated,
-      isGuest,
       token,
       userRole,
       adminRole,
       isCustomRole,
       userRoleName,
       customRole,
+      login,
+      logout,
     ],
   );
 

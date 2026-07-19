@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import { Button } from '@librechat/client';
 import { TriangleAlert } from 'lucide-react';
@@ -15,8 +15,46 @@ import { useMCPIconMap } from '~/hooks/MCP';
 import { AttachmentGroup } from './Parts';
 import ToolCallInfo from './ToolCallInfo';
 import ProgressText from './ProgressText';
+import {
+  NATIVE_COURSE_DATA_CHANGED_EVENT,
+  getNativeCourseToolResult,
+  isNativeCourseMutationTool,
+} from '~/components/Courses/assistantEvents';
 import { logger } from '~/utils';
 import store from '~/store';
+
+function nativeCourseStatus(name: string, running: boolean, failed: boolean): string {
+  if (running) {
+    return 'Working in your course…';
+  }
+  if (failed) {
+    return 'Course action could not be completed';
+  }
+  if (name.includes('read_file')) {
+    return 'Read the connected file';
+  }
+  if (name.includes('profile')) {
+    return name.includes('get_') ? 'Checked your profile' : 'Updated your profile';
+  }
+  if (name.includes('project')) {
+    return name.includes('get_') || name.includes('list')
+      ? 'Checked your project'
+      : 'Updated your project';
+  }
+  if (name.includes('time')) {
+    return 'Updated your time log';
+  }
+  if (name.includes('feedback') || name.includes('review')) {
+    return 'Updated your feedback';
+  }
+  if (name.includes('work')) {
+    return 'Updated your work';
+  }
+  if (name.includes('undo')) {
+    return 'Undid the course change';
+  }
+  return 'Checked your course workspace';
+}
 
 export default function ToolCall({
   initialProgress = 0.1,
@@ -164,6 +202,24 @@ export default function ToolCall({
 
   const progress = useProgress(initialProgress);
   const showCancelled = cancelled || (errorState && !output);
+  const isNativeCourseTool = function_name.startsWith('native_course_');
+  const nativeCourseToolResult = useMemo(() => getNativeCourseToolResult(output), [output]);
+  const notifiedCourseParent = useRef(false);
+
+  useEffect(() => {
+    if (
+      notifiedCourseParent.current ||
+      !isNativeCourseTool ||
+      !isNativeCourseMutationTool(function_name) ||
+      showCancelled ||
+      errorState ||
+      nativeCourseToolResult !== 'success'
+    ) {
+      return;
+    }
+    notifiedCourseParent.current = true;
+    window.parent.postMessage({ type: NATIVE_COURSE_DATA_CHANGED_EVENT }, window.location.origin);
+  }, [errorState, function_name, isNativeCourseTool, nativeCourseToolResult, showCancelled]);
 
   const handleToggleInfo = useCallback(() => {
     setShowInfo((prev) => {
@@ -200,6 +256,32 @@ export default function ToolCall({
 
   if (!isLast && (!function_name || function_name.length === 0) && !output) {
     return null;
+  }
+
+  if (isNativeCourseTool) {
+    const failed =
+      showCancelled ||
+      errorState ||
+      nativeCourseToolResult === 'failure' ||
+      nativeCourseToolResult === 'invalid';
+    const running = nativeCourseToolResult === 'pending' && !failed;
+    return (
+      <>
+        <div
+          className="relative my-1.5 flex min-h-6 shrink-0 items-center gap-2 text-sm text-text-secondary"
+          role="status"
+        >
+          <span
+            className={`size-2 rounded-full bg-text-tertiary ${running ? 'animate-pulse' : ''}`}
+            aria-hidden="true"
+          />
+          <span>{nativeCourseStatus(function_name, running, failed)}</span>
+        </div>
+        {!hideAttachments && attachments && attachments.length > 0 ? (
+          <AttachmentGroup attachments={attachments} />
+        ) : null}
+      </>
+    );
   }
 
   return (

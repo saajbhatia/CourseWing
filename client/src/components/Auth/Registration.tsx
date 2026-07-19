@@ -1,3 +1,4 @@
+/* eslint-disable i18next/no-literal-string */
 import { useForm } from 'react-hook-form';
 import React, { useContext, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
@@ -15,13 +16,21 @@ const Registration: React.FC = () => {
   const localize = useLocalize();
   const { theme } = useContext(ThemeContext);
   const { startupConfig, startupConfigError, isFetching } = useOutletContext<TLoginLayoutContext>();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const token = queryParams.get('token');
+  const invitedEmail = token ? (queryParams.get('email')?.trim().toLowerCase() ?? '') : '';
+  const courseName = token ? (queryParams.get('courseName')?.trim() ?? '') : '';
 
   const {
     watch,
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<TRegisterUser>({ mode: 'onChange' });
+  } = useForm<TRegisterUser>({
+    mode: 'onChange',
+    defaultValues: invitedEmail ? { email: invitedEmail } : undefined,
+  });
   const password = watch('password');
 
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -29,9 +38,6 @@ const Registration: React.FC = () => {
   const [countdown, setCountdown] = useState<number>(3);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const token = queryParams.get('token');
   const validTheme = isDark(theme) ? 'dark' : 'light';
 
   // only require captcha if we have a siteKey
@@ -104,6 +110,7 @@ const Registration: React.FC = () => {
                 autoComplete={id}
                 aria-label={fieldLabel}
                 {...field}
+                readOnly={id === 'email' && Boolean(invitedEmail)}
                 aria-invalid={!!errors[id]}
                 className={authInputClassName}
                 placeholder=" "
@@ -145,6 +152,20 @@ const Registration: React.FC = () => {
             localize('com_auth_email_verification_redirecting', { 0: countdown.toString() })}
         </div>
       )}
+      {token && (courseName || invitedEmail) ? (
+        <div
+          className="mt-4 rounded-xl border border-border-light bg-surface-secondary px-3.5 py-3 text-sm text-text-secondary"
+          role="status"
+        >
+          <span className="font-medium text-text-primary">
+            {courseName ? `Join ${courseName}` : 'Course invitation'}
+          </span>
+          <span className="mt-1 block">
+            Create your account
+            {invitedEmail ? ` with ${invitedEmail}` : ''} to join the course.
+          </span>
+        </div>
+      ) : null}
       {!startupConfigError && !isFetching && (
         <>
           <form

@@ -34,6 +34,7 @@ const tags = require('./tags');
 const auth = require('./auth');
 const keys = require('./keys');
 const learnlight = require('./learnlight');
+const courses = require('./courses');
 const user = require('./user');
 const mcp = require('./mcp');
 const rum = require('./rum');
@@ -52,6 +53,7 @@ module.exports = {
   adminAuditLog,
   keys,
   learnlight,
+  courses,
   apiKeys,
   user,
   tags,

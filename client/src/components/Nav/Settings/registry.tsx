@@ -35,6 +35,7 @@ import SharedLinks from '../SettingsTabs/Data/SharedLinks';
 import { showThinkingAtom } from '~/store/showThinking';
 import ProviderKeys from '../SettingsTabs/ProviderKeys';
 import Avatar from '../SettingsTabs/Account/Avatar';
+import Profile from '../SettingsTabs/Account/Profile';
 import CanvasConnection from '../SettingsTabs/Account/CanvasConnection';
 import About from '../SettingsTabs/About/About';
 import ApiKeys from '../SettingsTabs/ApiKeys';
@@ -509,6 +510,14 @@ export const registry: SettingEntry[] = [
   },
 
   // Account · Profile
+  {
+    id: 'profileDetails',
+    tab: ACCOUNT,
+    section: 'profile',
+    labelKey: 'com_ui_settings_section_profile',
+    keywords: ['profile', 'preferred name', 'interests', 'bio', 'website', 'github'],
+    Component: Profile,
+  },
   {
     id: 'avatar',
     tab: ACCOUNT,
