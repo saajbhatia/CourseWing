@@ -296,6 +296,18 @@ export default function TeacherCourseView({ course }: { course: LearnLightCourse
     ({ conversationId, action }: { conversationId: string; action: 'dismiss' | 'escalate' }) =>
       request.post(`${base}/receipts/${conversationId}/flag`, { action }),
     {
+      onSuccess: (_, { conversationId, action }) => {
+        if (action !== 'dismiss') {
+          return;
+        }
+        queryClient.setQueryData<{ queue: ReceiptView[] }>(['tcQueue', courseId], (current) =>
+          current == null
+            ? current
+            : {
+                queue: current.queue.filter((receipt) => receipt.conversationId !== conversationId),
+              },
+        );
+      },
       onSettled: () => {
         queryClient.invalidateQueries(['tcQueue', courseId]);
         queryClient.invalidateQueries(['tcOverview', courseId]);

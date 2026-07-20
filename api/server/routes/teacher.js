@@ -215,6 +215,7 @@ router.get('/teacher/courses/:courseId/queue', teacherGate, async (req, res) => 
     const receipts = await LearnLightReceipt.find({
       canvasCourseId: req.teacherCourseId,
       flagType: { $ne: null },
+      flagStatus: { $ne: 'dismissed' },
     })
       .sort({ lastMessageAt: -1 })
       .limit(50)
