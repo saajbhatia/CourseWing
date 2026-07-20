@@ -135,17 +135,17 @@ export default defineConfig(({ command }) => ({
           },
         ],
       },
-      includeAssets: ['assets/2utorly-icon.svg'],
+      includeAssets: ['assets/coursewing-icon.svg'],
       manifest: {
-        name: 'LearnLight',
-        short_name: 'LearnLight',
-        description: 'The course-aware AI tutor from 2utorly',
+        name: 'CourseWing',
+        short_name: 'CourseWing',
+        description: 'The course-aware AI tutor from CourseWing',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#0f9f6e',
         icons: [
           {
-            src: 'assets/2utorly-icon.svg',
+            src: 'assets/coursewing-icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable',
