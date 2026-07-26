@@ -2,9 +2,9 @@ const express = require('express');
 const { logger } = require('@librechat/data-schemas');
 const { requireJwtAuth } = require('~/server/middleware');
 const {
-  LearnLightReceipt,
-  LearnLightCourseSetting,
-  LearnLightActivity,
+  CourseWingReceipt,
+  CourseWingCourseSetting,
+  CourseWingActivity,
   CONSOLE_LEVELS,
   isTeacherUser,
   getTeacherCourseIds,
@@ -20,7 +20,7 @@ const {
   getPulse,
   getStudentProfile,
   answerAssistant,
-} = require('~/server/services/LearnLightTeacher');
+} = require('~/server/services/CourseWingTeacher');
 
 const router = express.Router();
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -53,7 +53,7 @@ async function teacherGate(req, res, next) {
 }
 
 async function getCourseReceipts(canvasCourseId) {
-  return LearnLightReceipt.find({ canvasCourseId }).sort({ lastMessageAt: -1 }).lean();
+  return CourseWingReceipt.find({ canvasCourseId }).sort({ lastMessageAt: -1 }).lean();
 }
 
 function computeStats(receipts, now) {
@@ -155,7 +155,7 @@ router.get('/teacher/courses/:courseId/overview', teacherGate, async (req, res) 
 
 router.get('/teacher/courses/:courseId/students/:userId', teacherGate, async (req, res) => {
   try {
-    const receipts = await LearnLightReceipt.find({
+    const receipts = await CourseWingReceipt.find({
       canvasCourseId: req.teacherCourseId,
       userId: req.params.userId,
     })
@@ -212,7 +212,7 @@ router.post('/teacher/courses/:courseId/assistant', teacherGate, async (req, res
 
 router.get('/teacher/courses/:courseId/queue', teacherGate, async (req, res) => {
   try {
-    const receipts = await LearnLightReceipt.find({
+    const receipts = await CourseWingReceipt.find({
       canvasCourseId: req.teacherCourseId,
       flagType: { $ne: null },
       flagStatus: { $ne: 'dismissed' },
@@ -229,7 +229,7 @@ router.get('/teacher/courses/:courseId/queue', teacherGate, async (req, res) => 
 });
 
 async function findCourseReceipt(courseId, conversationId) {
-  return LearnLightReceipt.findOne({ canvasCourseId: courseId, conversationId }).lean();
+  return CourseWingReceipt.findOne({ canvasCourseId: courseId, conversationId }).lean();
 }
 
 router.post(
@@ -245,7 +245,7 @@ router.post(
       if (!receipt || receipt.flagType == null) {
         return res.status(404).json({ message: 'Flag not found' });
       }
-      await LearnLightReceipt.updateOne(
+      await CourseWingReceipt.updateOne(
         { _id: receipt._id },
         { $set: { flagStatus: action === 'dismiss' ? 'dismissed' : 'escalated' } },
       );
@@ -266,7 +266,7 @@ router.post(
       if (!receipt || receipt.flagType == null) {
         return res.status(404).json({ message: 'Flag not found' });
       }
-      await LearnLightReceipt.updateOne(
+      await CourseWingReceipt.updateOne(
         { _id: receipt._id },
         { $push: { unlockLog: { at: new Date(), by: req.user.email ?? req.user.id } } },
       );
@@ -328,7 +328,7 @@ router.put('/teacher/courses/:courseId/settings', teacherGate, async (req, res) 
     update.overrides = overrides;
   }
   try {
-    await LearnLightCourseSetting.updateOne(
+    await CourseWingCourseSetting.updateOne(
       { canvasCourseId: req.teacherCourseId },
       { $set: update },
       { upsert: true },
@@ -357,7 +357,7 @@ function activityView(activity, userId) {
 }
 
 router.get('/teacher/courses/:courseId/activities', teacherGate, async (req, res) => {
-  const activities = await LearnLightActivity.find({ canvasCourseId: req.teacherCourseId })
+  const activities = await CourseWingActivity.find({ canvasCourseId: req.teacherCourseId })
     .sort({ createdAt: -1 })
     .limit(50)
     .lean();
@@ -371,7 +371,7 @@ router.post('/teacher/courses/:courseId/activities', teacherGate, async (req, re
   }
   const dueAt = req.body?.dueAt ? new Date(req.body.dueAt) : null;
   try {
-    const activity = await LearnLightActivity.create({
+    const activity = await CourseWingActivity.create({
       canvasCourseId: req.teacherCourseId,
       title,
       type: ACTIVITY_TYPES.includes(req.body?.type) ? req.body.type : 'Practice set',
@@ -398,7 +398,7 @@ router.get('/activities', async (req, res) => {
     return res.status(400).json({ message: 'courseId is required' });
   }
   const email = (req.user.email ?? '').toLowerCase();
-  const activities = await LearnLightActivity.find({ canvasCourseId: courseId })
+  const activities = await CourseWingActivity.find({ canvasCourseId: courseId })
     .sort({ createdAt: -1 })
     .limit(20)
     .lean();
@@ -410,7 +410,7 @@ router.get('/activities', async (req, res) => {
 
 router.post('/activities/:id/started', async (req, res) => {
   try {
-    await LearnLightActivity.updateOne(
+    await CourseWingActivity.updateOne(
       { _id: req.params.id },
       { $addToSet: { startedBy: req.user.id } },
     );

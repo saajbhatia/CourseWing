@@ -90,7 +90,7 @@ const { logger, getTenantId } = require('@librechat/data-schemas');
 const { MCPTokenStorage, MCPOAuthHandler } = require('@librechat/api');
 const { updateUserPluginAuth } = require('~/server/services/PluginService');
 const { updateUserPluginsController } = require('~/server/controllers/UserController');
-const { RESERVED_LEARNLIGHT_AUTH_FIELDS } = require('~/server/services/LearnLightAuth');
+const { RESERVED_COURSEWING_AUTH_FIELDS } = require('~/server/services/CourseWingAuth');
 
 function createResponse() {
   const res = {};
@@ -154,7 +154,7 @@ beforeEach(() => {
   getTenantId.mockReturnValue(undefined);
 });
 
-describe('updateUserPluginsController LearnLight credential isolation', () => {
+describe('updateUserPluginsController CourseWing credential isolation', () => {
   function createExploitRequest({
     pluginKey = 'attacker-plugin',
     action = 'install',
@@ -172,7 +172,7 @@ describe('updateUserPluginsController LearnLight credential isolation', () => {
     };
   }
 
-  it.each(RESERVED_LEARNLIGHT_AUTH_FIELDS)(
+  it.each(RESERVED_COURSEWING_AUTH_FIELDS)(
     'blocks authenticated install of reserved auth field %s',
     async (authField) => {
       const res = createResponse();
@@ -191,7 +191,7 @@ describe('updateUserPluginsController LearnLight credential isolation', () => {
     },
   );
 
-  it.each(['LEARNLIGHT_CANVAS_BASE_URL', 'LEARNLINK_CANVAS_USER_ID'])(
+  it.each(['COURSEWING_CANVAS_BASE_URL', 'LEARNLINK_CANVAS_USER_ID'])(
     'reserves future Canvas auth namespace field %s',
     async (authField) => {
       const res = createResponse();
@@ -206,7 +206,7 @@ describe('updateUserPluginsController LearnLight credential isolation', () => {
     },
   );
 
-  it.each(['learnlight', 'LearnLight', 'learnlink'])(
+  it.each(['coursewing', 'CourseWing', 'coursewing'])(
     'blocks authenticated install of reserved plugin key %s before changing user plugins',
     async (pluginKey) => {
       const res = createResponse();

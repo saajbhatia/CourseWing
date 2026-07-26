@@ -6,7 +6,7 @@ import {
   useCanvasConnectionQuery,
   useConnectCanvasMutation,
   useDisconnectCanvasMutation,
-} from '~/data-provider/LearnLight';
+} from '~/data-provider/CourseWing';
 import { useLocalize } from '~/hooks';
 
 function connectErrorMessage(error: unknown, fallback: string): string {

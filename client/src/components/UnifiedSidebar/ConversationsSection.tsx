@@ -25,8 +25,8 @@ import {
   usePendingCourse,
   clearPendingCourse,
   iconButtonClassName,
-} from '~/components/LearnLight/utils';
-import { recordCourseChat, useCourseChatMap } from '~/components/LearnLight/chats';
+} from '~/components/CourseWing/utils';
+import { recordCourseChat, useCourseChatMap } from '~/components/CourseWing/chats';
 import {
   useConversationsInfiniteQuery,
   useGetConvoIdQuery,
@@ -36,8 +36,8 @@ import {
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
 import FavoritesList from '~/components/Nav/Favorites/FavoritesList';
-import CoursePanel from '~/components/LearnLight/CoursePanel';
-import { useCanvasConnectionQuery } from '~/data-provider/LearnLight';
+import CoursePanel from '~/components/CourseWing/CoursePanel';
+import { useCanvasConnectionQuery } from '~/data-provider/CourseWing';
 import { Conversations } from '~/components/Conversations';
 import Convo from '~/components/Conversations/Convo';
 import SearchBar from '~/components/Nav/SearchBar';
@@ -173,7 +173,7 @@ const ConversationsSection = memo(() => {
   }, [conversationId, submission]);
 
   const showCoursePanel =
-    startupConfig?.learnLightEnabled === true &&
+    startupConfig?.courseWingEnabled === true &&
     canvasConnection?.connected === true &&
     typeof canvasConnection.canvasAccountKey === 'string' &&
     activeCourseId != null &&

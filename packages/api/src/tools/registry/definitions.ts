@@ -1,6 +1,6 @@
 import { WebSearchToolDefinition, CalculatorToolDefinition } from '@librechat/agents';
-import { learnLightToolDefinitions } from '~/learnlight/definitions';
-import { isLearnLightEnabled } from '~/learnlight/config';
+import { courseWingToolDefinitions } from '~/coursewing/definitions';
+import { isCourseWingEnabled } from '~/coursewing/config';
 import { geminiToolkit } from '~/tools/toolkits/gemini';
 import { oaiToolkit } from '~/tools/toolkits/oai';
 
@@ -480,14 +480,14 @@ export function getToolDefinition(toolName: string): ToolRegistryDefinition | un
   if (standardDefinition) {
     return standardDefinition;
   }
-  return isLearnLightEnabled() ? learnLightToolDefinitions[toolName] : undefined;
+  return isCourseWingEnabled() ? courseWingToolDefinitions[toolName] : undefined;
 }
 
 export function getAllToolDefinitions(): ToolRegistryDefinition[] {
   return [
     ...Object.values(toolDefinitions),
     ...Object.values(agentToolDefinitions),
-    ...(isLearnLightEnabled() ? Object.values(learnLightToolDefinitions) : []),
+    ...(isCourseWingEnabled() ? Object.values(courseWingToolDefinitions) : []),
   ];
 }
 

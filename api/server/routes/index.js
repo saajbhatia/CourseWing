@@ -33,7 +33,7 @@ const share = require('./share');
 const tags = require('./tags');
 const auth = require('./auth');
 const keys = require('./keys');
-const learnlight = require('./learnlight');
+const coursewing = require('./coursewing');
 const user = require('./user');
 const mcp = require('./mcp');
 const rum = require('./rum');
@@ -51,7 +51,7 @@ module.exports = {
   adminUsers,
   adminAuditLog,
   keys,
-  learnlight,
+  coursewing,
   apiKeys,
   user,
   tags,

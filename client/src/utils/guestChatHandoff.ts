@@ -3,7 +3,7 @@ import type { TConversation } from 'librechat-data-provider';
 import createChatSearchParams from './createChatSearchParams';
 import { getPendingGuestCoursePrefix } from './pendingCourseContext';
 
-export const GUEST_CHAT_HANDOFF_KEY = 'learnlight:guest-chat-handoff';
+export const GUEST_CHAT_HANDOFF_KEY = 'coursewing:guest-chat-handoff';
 
 const HANDOFF_VERSION = 1;
 const HANDOFF_TTL_MS = 60 * 60 * 1000;

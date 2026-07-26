@@ -11,14 +11,14 @@ import type {
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import type { LoadAgentParams, LoadAgentDeps } from '../load';
-import { learnLightToolKeys } from '../../learnlight';
+import { courseWingToolKeys } from '../../coursewing';
 import { loadAddedAgent } from '../added';
 import { loadAgent } from '../load';
 
 let Agent: mongoose.Model<unknown>;
 let createAgent: ReturnType<typeof createMethods>['createAgent'];
 let getAgent: ReturnType<typeof createMethods>['getAgent'];
-let previousLearnLightEnabled: string | undefined;
+let previousCourseWingEnabled: string | undefined;
 
 const mockGetMCPServerTools = jest.fn();
 
@@ -46,18 +46,18 @@ describe('loadAgent', () => {
   });
 
   beforeEach(async () => {
-    previousLearnLightEnabled = process.env.LEARNLIGHT_ENABLED;
-    process.env.LEARNLIGHT_ENABLED = 'false';
+    previousCourseWingEnabled = process.env.COURSEWING_ENABLED;
+    process.env.COURSEWING_ENABLED = 'false';
     await Agent.deleteMany({});
     jest.clearAllMocks();
   });
 
   afterEach(() => {
-    if (previousLearnLightEnabled == null) {
-      delete process.env.LEARNLIGHT_ENABLED;
+    if (previousCourseWingEnabled == null) {
+      delete process.env.COURSEWING_ENABLED;
       return;
     }
-    process.env.LEARNLIGHT_ENABLED = previousLearnLightEnabled;
+    process.env.COURSEWING_ENABLED = previousCourseWingEnabled;
   });
 
   test('should return null when agent_id is not provided', async () => {
@@ -226,16 +226,16 @@ describe('loadAgent', () => {
     expect(result!.version).toBe(1);
   });
 
-  test('should apply LearnLight course instructions and tools to a persistent agent', async () => {
-    process.env.LEARNLIGHT_ENABLED = 'true';
+  test('should apply CourseWing course instructions and tools to a persistent agent', async () => {
+    process.env.COURSEWING_ENABLED = 'true';
     const userId = new mongoose.Types.ObjectId();
     const agentId = `agent_${uuidv4()}`;
     const promptPrefix = [
       'Current Canvas course: Test Course',
       'Canvas course ID: 42',
-      '[LearnLight tutor — set for this conversation]',
+      '[CourseWing tutor — set for this conversation]',
       'Enriched learning policy.',
-      '[LearnLight course context — synced from Canvas, refreshed automatically]',
+      '[CourseWing course context — synced from Canvas, refreshed automatically]',
       'Course: Test Course — Canvas course ID: 42',
     ].join('\n');
 
@@ -246,7 +246,7 @@ describe('loadAgent', () => {
       model: 'gpt-4',
       author: userId,
       instructions: 'Saved agent instructions.',
-      tools: ['web_search', learnLightToolKeys[0]],
+      tools: ['web_search', courseWingToolKeys[0]],
     });
 
     const result = await loadAgent(
@@ -254,21 +254,21 @@ describe('loadAgent', () => {
         req: { user: { id: userId.toString() }, body: { promptPrefix } },
         agent_id: agentId,
         endpoint: 'agents',
-        applyLearnLightCourseContext: true,
+        applyCourseWingCourseContext: true,
       },
       deps,
     );
 
     expect(result?.instructions).toBe(`Saved agent instructions.\n\n${promptPrefix}`);
-    expect(result?.tools).toEqual(['web_search', ...learnLightToolKeys]);
+    expect(result?.tools).toEqual(['web_search', ...courseWingToolKeys]);
 
     const storedAgent = await getAgent({ id: agentId });
     expect(storedAgent?.instructions).toBe('Saved agent instructions.');
-    expect(storedAgent?.tools).toEqual(['web_search', learnLightToolKeys[0]]);
+    expect(storedAgent?.tools).toEqual(['web_search', courseWingToolKeys[0]]);
   });
 
-  test('should not grant LearnLight tools to a persistent non-course chat', async () => {
-    process.env.LEARNLIGHT_ENABLED = 'true';
+  test('should not grant CourseWing tools to a persistent non-course chat', async () => {
+    process.env.COURSEWING_ENABLED = 'true';
     const userId = new mongoose.Types.ObjectId();
     const agentId = `agent_${uuidv4()}`;
 
@@ -288,12 +288,12 @@ describe('loadAgent', () => {
           user: { id: userId.toString() },
           body: {
             promptPrefix:
-              'General chat prefix.\n\n[LearnLight tutor — set for this conversation]\nEnriched learning policy.',
+              'General chat prefix.\n\n[CourseWing tutor — set for this conversation]\nEnriched learning policy.',
           },
         },
         agent_id: agentId,
         endpoint: 'agents',
-        applyLearnLightCourseContext: true,
+        applyCourseWingCourseContext: true,
       },
       deps,
     );
@@ -302,18 +302,18 @@ describe('loadAgent', () => {
     expect(result?.tools).toEqual(['web_search']);
   });
 
-  test('should not overlay a persistent course agent when LearnLight is disabled', async () => {
+  test('should not overlay a persistent course agent when CourseWing is disabled', async () => {
     const userId = new mongoose.Types.ObjectId();
     const agentId = `agent_${uuidv4()}`;
 
     await createAgent({
       id: agentId,
-      name: 'Disabled LearnLight Agent',
+      name: 'Disabled CourseWing Agent',
       provider: 'openai',
       model: 'gpt-4',
       author: userId,
       instructions: 'Saved agent instructions.',
-      tools: ['web_search', learnLightToolKeys[0]],
+      tools: ['web_search', courseWingToolKeys[0]],
     });
 
     const result = await loadAgent(
@@ -324,7 +324,7 @@ describe('loadAgent', () => {
         },
         agent_id: agentId,
         endpoint: 'agents',
-        applyLearnLightCourseContext: true,
+        applyCourseWingCourseContext: true,
       },
       deps,
     );
@@ -333,11 +333,11 @@ describe('loadAgent', () => {
     expect(result?.tools).toEqual(['web_search']);
 
     const storedAgent = await getAgent({ id: agentId });
-    expect(storedAgent?.tools).toEqual(['web_search', learnLightToolKeys[0]]);
+    expect(storedAgent?.tools).toEqual(['web_search', courseWingToolKeys[0]]);
   });
 
   test('should not overlay a non-primary persistent agent from the same course request', async () => {
-    process.env.LEARNLIGHT_ENABLED = 'true';
+    process.env.COURSEWING_ENABLED = 'true';
     const userId = new mongoose.Types.ObjectId();
     const agentId = `agent_${uuidv4()}`;
 

@@ -1,7 +1,7 @@
 export * from './Auth';
 export * from './Agents';
 export * from './Endpoints';
-export * from './LearnLight';
+export * from './CourseWing';
 export * from './Skills';
 export * from './Files';
 /* Memories */

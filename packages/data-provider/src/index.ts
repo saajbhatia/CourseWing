@@ -57,5 +57,5 @@ export * from './feedback';
 export * from './parameterSettings';
 /* code-execution sandbox */
 export * from './codeEnvRef';
-/* LearnLight */
-export * from './learnlight';
+/* CourseWing */
+export * from './coursewing';

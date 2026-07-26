@@ -136,7 +136,7 @@ describe('useSubmitMessage', () => {
   it('removes a consumed course handoff from the login redirect and preserves other params', () => {
     mockUseLocation.mockReturnValue({
       pathname: '/c/new',
-      search: '?learnlight=consumed-123&campaign=summer',
+      search: '?coursewing=consumed-123&campaign=summer',
       hash: '#composer',
     });
     mockUseAuthContext.mockReturnValue({ user: undefined, isAuthenticated: false });

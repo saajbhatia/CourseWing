@@ -104,7 +104,7 @@ afterEach(() => {
   delete process.env.ANALYTICS_GTM_ID;
   delete process.env.CUSTOM_FOOTER;
   delete process.env.HELP_AND_FAQ_URL;
-  delete process.env.LEARNLIGHT_ENABLED;
+  delete process.env.COURSEWING_ENABLED;
 });
 
 describe('GET /api/config', () => {
@@ -166,15 +166,15 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('conversationImportMaxFileSize');
     });
 
-    it('should expose LearnLight availability so guest assignment handoffs keep their greeting', async () => {
-      process.env.LEARNLIGHT_ENABLED = 'true';
+    it('should expose CourseWing availability so guest assignment handoffs keep their greeting', async () => {
+      process.env.COURSEWING_ENABLED = 'true';
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
       const response = await request(app).get('/api/config');
 
       expect(response.statusCode).toBe(200);
-      expect(response.body.learnLightEnabled).toBe(true);
+      expect(response.body.courseWingEnabled).toBe(true);
     });
 
     it('should strip authenticated-only informational fields from unauthenticated response (#12688)', async () => {

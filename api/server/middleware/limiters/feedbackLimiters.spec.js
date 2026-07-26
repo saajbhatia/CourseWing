@@ -18,7 +18,7 @@ function appWith(middleware) {
   return app;
 }
 
-describe('LearnLight feedback rate limits', () => {
+describe('CourseWing feedback rate limits', () => {
   it('enforces the independent IP write budget', async () => {
     const { feedbackIpLimiter } = createFeedbackLimiters({ ipMax: 2, ipWindowMinutes: 1 });
     const app = appWith(feedbackIpLimiter);

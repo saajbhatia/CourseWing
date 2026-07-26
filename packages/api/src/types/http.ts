@@ -27,8 +27,8 @@ export type ServerRequest = Request<unknown, unknown, RequestBody> & {
   conversationCreatedAt?: string;
   /** Trusted conversation loaded by request middleware/controller and reused by save logic. */
   resolvedConversation?: Partial<TConversation> | null;
-  /** Verified internal Canvas account scope attached only to LearnLight course requests. */
-  learnLightCanvasAccountKey?: string;
+  /** Verified internal Canvas account scope attached only to CourseWing course requests. */
+  courseWingCanvasAccountKey?: string;
   /** Passport strategy that populated req.user for this request. */
   authStrategy?: string;
 };

@@ -1,7 +1,7 @@
 import { extractCanvasCourseId } from 'librechat-data-provider';
 
-const PENDING_COURSE_CONTEXT_KEY = 'learnlight:pendingCourseContext';
-export const PENDING_COURSE_KEY = 'learnlight:pendingCourse';
+const PENDING_COURSE_CONTEXT_KEY = 'coursewing:pendingCourseContext';
+export const PENDING_COURSE_KEY = 'coursewing:pendingCourse';
 const MAX_COURSE_PREFIX_LENGTH = 20_000;
 
 type PendingCourseContext = {

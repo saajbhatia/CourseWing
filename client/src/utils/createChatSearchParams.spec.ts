@@ -362,13 +362,13 @@ describe('createChatSearchParams', () => {
       expect(result instanceof URLSearchParams).toBe(true);
     });
 
-    it('preserves a pending LearnLight handoff when conversation settings rewrite the URL', () => {
+    it('preserves a pending CourseWing handoff when conversation settings rewrite the URL', () => {
       const result = preserveTransientChatSearchParams(
         new URLSearchParams({ spec: 'course-tutor' }),
-        new URLSearchParams({ learnlight: 'review-session-123', prompt: 'do-not-preserve' }),
+        new URLSearchParams({ coursewing: 'review-session-123', prompt: 'do-not-preserve' }),
       );
 
-      expect(result.toString()).toBe('spec=course-tutor&learnlight=review-session-123');
+      expect(result.toString()).toBe('spec=course-tutor&coursewing=review-session-123');
     });
   });
 });

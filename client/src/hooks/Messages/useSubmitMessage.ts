@@ -42,7 +42,7 @@ export default function useSubmitMessage() {
         /** The one-time course handoff has already been consumed by useQueryParams. The private
          * guest handoff now owns the prompt and course context, so do not replay a stale handle
          * after authentication. Preserve unrelated query parameters. */
-        loginSearchParams.delete('learnlight');
+        loginSearchParams.delete('coursewing');
         const loginSearch = loginSearchParams.toString();
         navigate(
           buildLoginRedirectUrl(

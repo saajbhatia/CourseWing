@@ -10,11 +10,11 @@ const formatDate = (date: Date): string => {
 };
 
 /**
- * Demo/testing override (`LEARNLIGHT_FAKE_NOW`): memory timestamps shown to the model
+ * Demo/testing override (`COURSEWING_FAKE_NOW`): memory timestamps shown to the model
  * are capped at the fake "now" so they can't reveal the real date.
  */
 const displayDate = (date: Date): Date => {
-  const fakeNowMs = Date.parse(process.env.LEARNLIGHT_FAKE_NOW ?? '');
+  const fakeNowMs = Date.parse(process.env.COURSEWING_FAKE_NOW ?? '');
   if (Number.isNaN(fakeNowMs) || date.getTime() <= fakeNowMs) {
     return date;
   }
