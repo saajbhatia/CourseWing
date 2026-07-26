@@ -9,6 +9,7 @@ export type CanvasConnection = {
   enabled?: boolean;
   connected: boolean;
   isDefault?: boolean;
+  provider?: 'canvas' | 'google';
   canvasAccountKey?: string;
   userName?: string | null;
   baseUrl?: string;
@@ -108,6 +109,24 @@ export function useConnectCanvasMutation(): UseMutationResult<
         removeCanvasScopedQueries(queryClient);
         queryClient.invalidateQueries(['coursewing']);
         queryClient.invalidateQueries([QueryKeys.messages]);
+      },
+    },
+  );
+}
+
+/** Fetches the Google consent URL and sends the browser there; the OAuth callback returns to the app. */
+export function useConnectGoogleClassroomMutation(): UseMutationResult<
+  { url?: string },
+  Error,
+  void
+> {
+  return useMutation<{ url?: string }, Error, void>(
+    () => request.get('/api/coursewing/google/auth-url'),
+    {
+      onSuccess: (data) => {
+        if (typeof data?.url === 'string' && data.url.startsWith('https://accounts.google.com/')) {
+          window.location.assign(data.url);
+        }
       },
     },
   );

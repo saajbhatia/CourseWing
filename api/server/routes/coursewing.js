@@ -1,4 +1,5 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { isCourseWingEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { requireJwtAuth, createFeedbackLimiters } = require('~/server/middleware');
@@ -32,6 +33,7 @@ const MAX_FEEDBACK_USER_NAME_BYTES = 256;
 const MAX_FEEDBACK_USER_EMAIL_BYTES = 320;
 const MAX_FEEDBACK_REFERENCE_BYTES = 256;
 const PUBLIC_CANVAS_STATUS_FIELDS = [
+  'provider',
   'canvasAccountKey',
   'userName',
   'baseUrl',
@@ -39,6 +41,7 @@ const PUBLIC_CANVAS_STATUS_FIELDS = [
   'syncing',
   'courseCount',
 ];
+const GOOGLE_OAUTH_STATE_PURPOSE = 'coursewing_google_oauth';
 
 async function acquireCanvasMutationLock(userId) {
   const previous = canvasMutationQueues.get(userId);
@@ -212,6 +215,71 @@ async function retryPendingRevocation(userId) {
   return true;
 }
 
+/**
+ * Links a freshly registered tenant to the user, replacing (and revoking) any
+ * previous connection. Shared by the Canvas token flow and the Google OAuth
+ * callback; the caller must already hold the user's mutation lock.
+ */
+async function adoptTenant(userId, previousTenantId, newTenantId) {
+  const isReplacement = Boolean(previousTenantId && previousTenantId !== newTenantId);
+  if (isReplacement) {
+    const pendingResult = await updateUserPluginAuth(
+      userId,
+      CANVAS_PENDING_REVOCATION_FIELD,
+      COURSEWING_PLUGIN_KEY,
+      JSON.stringify({ tenantId: previousTenantId, replacementTenantId: newTenantId }),
+    );
+    if (pendingResult instanceof Error) {
+      await cleanupUnlinkedTenant(newTenantId);
+      throw pendingResult;
+    }
+  }
+
+  const updateResult = await updateUserPluginAuth(
+    userId,
+    CANVAS_TENANT_FIELD,
+    COURSEWING_PLUGIN_KEY,
+    newTenantId,
+  );
+  if (updateResult instanceof Error) {
+    if (isReplacement) {
+      try {
+        await clearPendingRevocation(userId);
+      } catch (pendingError) {
+        logger.error('[coursewing/canvas] Failed to clear replacement cleanup marker', pendingError);
+      }
+    }
+    if (newTenantId !== previousTenantId) {
+      await cleanupUnlinkedTenant(newTenantId);
+    }
+    throw updateResult;
+  }
+
+  const cleanupResults = await Promise.all([
+    deleteUserPluginAuth(userId, CANVAS_TOKEN_FIELD),
+    deleteUserPluginAuth(userId, LEGACY_CANVAS_TOKEN_FIELD),
+    deleteUserPluginAuth(userId, LEGACY_CANVAS_TENANT_FIELD),
+  ]);
+  cleanupResults.forEach(throwPluginAuthError);
+
+  if (previousTenantId && previousTenantId !== newTenantId) {
+    const deletion = await serviceFetch(`/api/coursewing/tenants/${previousTenantId}`, {
+      method: 'DELETE',
+    });
+    if (tenantDeleteFailed(deletion)) {
+      logger.error(
+        `[coursewing/canvas] Will retry revoking replaced Canvas tenant ${previousTenantId}`,
+      );
+      return { warning: 'previous_canvas_cleanup_pending' };
+    }
+    clearCourseWingCanvasIdentityCache(previousTenantId);
+    await clearPendingRevocation(userId);
+  }
+
+  clearCourseWingCanvasIdentityCache(newTenantId);
+  return {};
+}
+
 async function proxyUserCanvasData(req, res, servicePath) {
   const userId = req.user?.id;
   const release = userId ? await acquireCanvasMutationLock(userId) : () => {};
@@ -293,74 +361,95 @@ router.put('/canvas', requireJwtAuth, async (req, res) => {
       return res.status(502).json({ message: 'Canvas service returned an invalid tenant' });
     }
 
-    const isReplacement = Boolean(previousTenantId && previousTenantId !== newTenantId);
-    if (isReplacement) {
-      const pendingResult = await updateUserPluginAuth(
-        req.user.id,
-        CANVAS_PENDING_REVOCATION_FIELD,
-        COURSEWING_PLUGIN_KEY,
-        JSON.stringify({ tenantId: previousTenantId, replacementTenantId: newTenantId }),
-      );
-      if (pendingResult instanceof Error) {
-        await cleanupUnlinkedTenant(newTenantId);
-        throw pendingResult;
-      }
-    }
-
-    const updateResult = await updateUserPluginAuth(
-      req.user.id,
-      CANVAS_TENANT_FIELD,
-      COURSEWING_PLUGIN_KEY,
-      newTenantId,
-    );
-    if (updateResult instanceof Error) {
-      if (isReplacement) {
-        try {
-          await clearPendingRevocation(req.user.id);
-        } catch (pendingError) {
-          logger.error(
-            '[coursewing/canvas] Failed to clear replacement cleanup marker',
-            pendingError,
-          );
-        }
-      }
-      if (newTenantId !== previousTenantId) {
-        await cleanupUnlinkedTenant(newTenantId);
-      }
-      throw updateResult;
-    }
-
-    const cleanupResults = await Promise.all([
-      deleteUserPluginAuth(req.user.id, CANVAS_TOKEN_FIELD),
-      deleteUserPluginAuth(req.user.id, LEGACY_CANVAS_TOKEN_FIELD),
-      deleteUserPluginAuth(req.user.id, LEGACY_CANVAS_TENANT_FIELD),
-    ]);
-    cleanupResults.forEach(throwPluginAuthError);
-
-    if (previousTenantId && previousTenantId !== newTenantId) {
-      const deletion = await serviceFetch(`/api/coursewing/tenants/${previousTenantId}`, {
-        method: 'DELETE',
-      });
-      if (tenantDeleteFailed(deletion)) {
-        logger.error(
-          `[coursewing/canvas] Will retry revoking replaced Canvas tenant ${previousTenantId}`,
-        );
-        return res.json({
-          connected: true,
-          isDefault: false,
-          ...publicCanvasStatus(body),
-          warning: 'previous_canvas_cleanup_pending',
-        });
-      }
-      clearCourseWingCanvasIdentityCache(previousTenantId);
-      await clearPendingRevocation(req.user.id);
-    }
-
-    clearCourseWingCanvasIdentityCache(newTenantId);
-    return res.json({ connected: true, isDefault: false, ...publicCanvasStatus(body) });
+    const { warning } = await adoptTenant(req.user.id, previousTenantId, newTenantId);
+    return res.json({
+      connected: true,
+      isDefault: false,
+      ...publicCanvasStatus(body),
+      ...(warning ? { warning } : {}),
+    });
   } catch (error) {
     logger.error('[coursewing/canvas] Failed to connect Canvas account', error);
     return res.status(502).json({ message: 'Canvas service unavailable' });
+  } finally {
+    release();
+  }
+});
+
+function googleRedirectUri(req) {
+  const base =
+    process.env.DOMAIN_CLIENT?.trim() ||
+    process.env.DOMAIN_SERVER?.trim() ||
+    `${req.protocol}://${req.get('host')}`;
+  return new URL('/api/coursewing/google/callback', base).toString();
+}
+
+router.get('/google/auth-url', requireJwtAuth, async (req, res) => {
+  try {
+    const state = jwt.sign(
+      { sub: req.user.id, purpose: GOOGLE_OAUTH_STATE_PURPOSE },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' },
+    );
+    const redirectUri = googleRedirectUri(req);
+    const { ok, status, body } = await serviceFetch(
+      `/api/coursewing/google/auth-url?redirectUri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`,
+    );
+    if (!ok) {
+      return res.status(status === 503 ? 503 : 502).json({
+        message: body?.error ?? 'Google Classroom is unavailable',
+      });
+    }
+    return res.json({ url: body?.url });
+  } catch (error) {
+    logger.error('[coursewing/google] Failed to build the consent URL', error);
+    return res.status(502).json({ message: 'Google Classroom is unavailable' });
+  }
+});
+
+/** Browser-facing OAuth callback: verifies the signed state, links the tenant, returns to the app. */
+router.get('/google/callback', async (req, res) => {
+  const finish = (outcome) => res.redirect(`/c/new?classroom=${outcome}`);
+  if (typeof req.query?.error === 'string' && req.query.error) {
+    return finish('denied');
+  }
+  const code = typeof req.query?.code === 'string' ? req.query.code : '';
+  if (!code) {
+    return finish('invalid');
+  }
+
+  let userId;
+  try {
+    const payload = jwt.verify(String(req.query?.state ?? ''), process.env.JWT_SECRET);
+    if (payload?.purpose !== GOOGLE_OAUTH_STATE_PURPOSE || typeof payload?.sub !== 'string') {
+      throw new Error('Unexpected state payload');
+    }
+    userId = payload.sub;
+  } catch {
+    return finish('invalid');
+  }
+
+  const release = await acquireCanvasMutationLock(userId);
+  try {
+    if (!(await retryPendingRevocation(userId))) {
+      return finish('retry');
+    }
+    const previousTenantId = await getCourseWingTenantId(userId);
+    const { ok, body } = await serviceFetch('/api/coursewing/tenants/google', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirectUri: googleRedirectUri(req) }),
+    });
+    if (!ok || !isValidCourseWingTenantId(body?.tenantId)) {
+      logger.error(
+        `[coursewing/google] Tenant registration failed: ${body?.error ?? 'invalid response'}`,
+      );
+      return finish('error');
+    }
+    const { warning } = await adoptTenant(userId, previousTenantId, body.tenantId);
+    return finish(warning ? 'connected_pending_cleanup' : 'connected');
+  } catch (error) {
+    logger.error('[coursewing/google] Failed to complete the Google Classroom connection', error);
+    return finish('error');
   } finally {
     release();
   }

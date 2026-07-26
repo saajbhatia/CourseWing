@@ -2018,5 +2018,9 @@
   "com_ui_canvas_token_placeholder": "Paste your Canvas access token",
   "com_ui_canvas_domain_placeholder": "Canvas domain, e.g. yourschool.instructure.com",
   "com_ui_canvas_token_help": "Enter your school's Canvas web address, then create a token in Canvas: Account → Settings → + New Access Token. Your courses, assignments, and grades will appear after the first sync.",
+  "com_ui_classroom_connect": "Connect Google Classroom",
+  "com_ui_classroom_connect_error": "Could not start the Google Classroom connection",
+  "com_ui_classroom_or": "Using Google Classroom instead?",
+  "com_ui_classroom_source_label": "Google Classroom",
   "com_ui_guest_handoff_error": "Your draft could not be saved for sign-in. Please leave this page open and try again."
 }

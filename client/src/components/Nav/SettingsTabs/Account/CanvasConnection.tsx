@@ -6,6 +6,7 @@ import {
   useCanvasConnectionQuery,
   useConnectCanvasMutation,
   useDisconnectCanvasMutation,
+  useConnectGoogleClassroomMutation,
 } from '~/data-provider/CourseWing';
 import { useLocalize } from '~/hooks';
 
@@ -39,6 +40,18 @@ export default function CanvasConnection() {
   const connection = useCanvasConnectionQuery();
   const connectMutation = useConnectCanvasMutation();
   const disconnectMutation = useDisconnectCanvasMutation();
+  const googleMutation = useConnectGoogleClassroomMutation();
+
+  const handleGoogleConnect = () => {
+    googleMutation.mutate(undefined, {
+      onError: (error) => {
+        showToast({
+          status: 'error',
+          message: connectErrorMessage(error, localize('com_ui_classroom_connect_error')),
+        });
+      },
+    });
+  };
 
   const handleConnect = () => {
     if (!token.trim()) {
@@ -138,12 +151,31 @@ export default function CanvasConnection() {
         </Button>
       </div>
       <span className="text-xs text-text-secondary">{localize('com_ui_canvas_token_help')}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-secondary">{localize('com_ui_classroom_or')}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleGoogleConnect}
+          disabled={googleMutation.isLoading}
+          aria-label={localize('com_ui_classroom_connect')}
+        >
+          {googleMutation.isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Link2 className="h-4 w-4" aria-hidden="true" />
+          )}
+          {localize('com_ui_classroom_connect')}
+        </Button>
+      </div>
     </div>
   );
 
   if (connection.data?.connected === true) {
-    const { userName, courseCount, syncing, lastSyncAt, baseUrl, isDefault } = connection.data;
-    const host = hostOf(baseUrl);
+    const { userName, courseCount, syncing, lastSyncAt, baseUrl, isDefault, provider } =
+      connection.data;
+    const host =
+      provider === 'google' ? localize('com_ui_classroom_source_label') : hostOf(baseUrl);
     return (
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
