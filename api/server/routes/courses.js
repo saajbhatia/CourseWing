@@ -16,6 +16,7 @@ const { createToken, deleteTokens } = require('~/models');
 const { requireJwtAuth, configMiddleware } = require('~/server/middleware');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { getContentDisposition } = require('~/server/utils/files');
+const { claimCourseInvitation } = require('~/server/services/NativeCourseInvitations');
 
 const router = express.Router();
 const models = createModels(mongoose);
@@ -42,6 +43,20 @@ router.use((_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   res.vary('Authorization');
   next();
+});
+
+router.post('/join', async (req, res) => {
+  try {
+    const userId = req.user?.id ?? req.user?._id?.toString() ?? '';
+    const result = await claimCourseInvitation(req.body?.token, userId, req.user?.email);
+    return res.status(200).json({ joined: true, courseId: result.courseId });
+  } catch (error) {
+    logger.warn('[courses/join] Course invitation claim failed', {
+      userId: req.user?.id ?? req.user?._id?.toString() ?? '',
+      message: error.message,
+    });
+    return res.status(400).json({ message: error.message });
+  }
 });
 
 router.route('/').get(handlers.listCourses).post(handlers.createCourse);

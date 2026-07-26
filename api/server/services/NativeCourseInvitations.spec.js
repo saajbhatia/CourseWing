@@ -3,11 +3,16 @@ const mockMemberFindOne = jest.fn();
 const mockMemberFindOneAndUpdate = jest.fn();
 const mockMemberExists = jest.fn();
 const mockDeleteTokens = jest.fn();
+const mockFindToken = jest.fn();
+const mockGetCourseInviteToken = jest.fn();
+const mockGetCourseShareToken = jest.fn();
 
 jest.mock('mongoose', () => ({}));
 jest.mock('@librechat/api', () => ({
   COURSE_INVITE_TOKEN_TYPE: 'course_invite',
   COURSE_SHARE_TOKEN_TYPE: 'course_share',
+  getCourseInviteToken: (...args) => mockGetCourseInviteToken(...args),
+  getCourseShareToken: (...args) => mockGetCourseShareToken(...args),
 }));
 jest.mock('@librechat/data-schemas', () => ({
   createModels: () => ({
@@ -21,9 +26,11 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 jest.mock('~/models', () => ({
   deleteTokens: mockDeleteTokens,
+  findToken: mockFindToken,
 }));
 
 const {
+  claimCourseInvitation,
   completeCourseInvitation,
   isCourseInvitationAvailable,
 } = require('./NativeCourseInvitations');
@@ -41,6 +48,8 @@ describe('completeCourseInvitation', () => {
     mockCourseExists.mockResolvedValue(true);
     mockMemberExists.mockResolvedValue(true);
     mockDeleteTokens.mockResolvedValue({ deletedCount: 1 });
+    mockGetCourseInviteToken.mockResolvedValue(null);
+    mockGetCourseShareToken.mockResolvedValue(null);
   });
 
   it('activates the exact pending student before consuming the one-time token', async () => {
@@ -147,5 +156,42 @@ describe('completeCourseInvitation', () => {
 
     await expect(isCourseInvitationAvailable(shareInvite)).resolves.toBe(true);
     expect(mockMemberExists).not.toHaveBeenCalled();
+  });
+
+  it('claims a reusable share link for an authenticated user', async () => {
+    const shareInvite = {
+      userId: 'teacher-1',
+      type: 'course_share',
+      identifier: 'course-1',
+      token: 'stored-share-hash',
+    };
+    mockGetCourseShareToken.mockResolvedValue(shareInvite);
+    mockMemberFindOne.mockResolvedValue(null);
+    mockMemberFindOneAndUpdate.mockResolvedValue({ state: 'active', userId: 'user-2' });
+
+    await expect(
+      claimCourseInvitation('share-secret', 'user-2', 'Student@Example.com'),
+    ).resolves.toEqual({ courseId: 'course-1' });
+
+    expect(mockGetCourseShareToken).toHaveBeenCalledWith('share-secret', {
+      findToken: mockFindToken,
+    });
+    expect(mockGetCourseInviteToken).not.toHaveBeenCalled();
+    expect(mockMemberFindOneAndUpdate).toHaveBeenCalledWith(
+      { courseId: 'course-1', normalizedEmail: 'student@example.com' },
+      expect.any(Object),
+      { new: true, upsert: true },
+    );
+  });
+
+  it('rejects an invalid authenticated invitation claim', async () => {
+    await expect(
+      claimCourseInvitation('expired-secret', 'user-2', 'student@example.com'),
+    ).rejects.toThrow('invalid or has expired');
+
+    expect(mockGetCourseInviteToken).toHaveBeenCalledWith('expired-secret', 'student@example.com', {
+      findToken: mockFindToken,
+    });
+    expect(mockMemberFindOneAndUpdate).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
-const { COURSE_INVITE_TOKEN_TYPE, COURSE_SHARE_TOKEN_TYPE } = require('@librechat/api');
+const {
+  COURSE_INVITE_TOKEN_TYPE,
+  COURSE_SHARE_TOKEN_TYPE,
+  getCourseInviteToken,
+  getCourseShareToken,
+} = require('@librechat/api');
 const { createModels } = require('@librechat/data-schemas');
-const { deleteTokens } = require('~/models');
+const { deleteTokens, findToken } = require('~/models');
 
 const { Course, CourseMember } = createModels(mongoose);
 
@@ -123,4 +128,33 @@ async function completeCourseInvitation(invite, userId, submittedEmail) {
   return membership;
 }
 
-module.exports = { completeCourseInvitation, isCourseInvitationAvailable };
+/**
+ * Claims either a reusable course share link or an email-bound course invite
+ * for an already-authenticated user. The token record remains authoritative
+ * for the course id, so query-string course ids cannot redirect membership.
+ */
+async function claimCourseInvitation(encodedToken, userId, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!encodedToken || !userId || !normalizedEmail) {
+    throw new Error('A valid course invitation and signed-in account are required');
+  }
+
+  const shareInvite = await getCourseShareToken(encodedToken, { findToken });
+  const invite =
+    shareInvite ?? (await getCourseInviteToken(encodedToken, normalizedEmail, { findToken }));
+  if (!invite) {
+    throw new Error('This course invitation is invalid or has expired');
+  }
+  if (!(await isCourseInvitationAvailable(invite))) {
+    throw new Error('This course invitation is no longer available');
+  }
+
+  await completeCourseInvitation(invite, userId, normalizedEmail);
+  return { courseId: invite.identifier };
+}
+
+module.exports = {
+  claimCourseInvitation,
+  completeCourseInvitation,
+  isCourseInvitationAvailable,
+};

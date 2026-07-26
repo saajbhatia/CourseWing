@@ -1,11 +1,11 @@
 /* eslint-disable i18next/no-literal-string */
 import { useForm } from 'react-hook-form';
-import React, { useContext, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { ThemeContext, SecretInput, Spinner, Button, isDark } from '@librechat/client';
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { useRegisterUserMutation } from 'librechat-data-provider/react-query';
-import { loginPage } from 'librechat-data-provider';
+import { joinCourseFromInvitation, loginPage } from 'librechat-data-provider';
 import type { TRegisterUser, TError } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
 import { useLocalize, TranslationKeys } from '~/hooks';
@@ -15,12 +15,22 @@ const Registration: React.FC = () => {
   const navigate = useNavigate();
   const localize = useLocalize();
   const { theme } = useContext(ThemeContext);
-  const { startupConfig, startupConfigError, isFetching } = useOutletContext<TLoginLayoutContext>();
+  const {
+    startupConfig,
+    startupConfigError,
+    isFetching,
+    isAuthenticated = false,
+  } = useOutletContext<TLoginLayoutContext>();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const token = queryParams.get('token');
   const invitedEmail = token ? (queryParams.get('email')?.trim().toLowerCase() ?? '') : '';
   const courseName = token ? (queryParams.get('courseName')?.trim() ?? '') : '';
+  const courseId = token ? (queryParams.get('course')?.trim() ?? '') : '';
+  const invitationPath = `${location.pathname}${location.search}`;
+  const loginUrl = token
+    ? `${loginPage()}?redirect_to=${encodeURIComponent(invitationPath)}`
+    : loginPage();
 
   const {
     watch,
@@ -37,6 +47,26 @@ const Registration: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [countdown, setCountdown] = useState<number>(3);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const joinAttempted = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token || joinAttempted.current) {
+      return;
+    }
+    joinAttempted.current = true;
+    setIsSubmitting(true);
+    setErrorMessage('');
+    void joinCourseFromInvitation(token)
+      .then((result) => {
+        navigate(`/workspace/courses/${encodeURIComponent(result.courseId)}`, { replace: true });
+      })
+      .catch((error: TError) => {
+        setErrorMessage(
+          error.response?.data?.message ?? 'The course invitation could not be claimed.',
+        );
+      })
+      .finally(() => setIsSubmitting(false));
+  }, [isAuthenticated, navigate, token]);
 
   const validTheme = isDark(theme) ? 'dark' : 'light';
 
@@ -61,7 +91,12 @@ const Registration: React.FC = () => {
         setCountdown((prevCountdown) => {
           if (prevCountdown <= 1) {
             clearInterval(timer);
-            navigate('/c/new', { replace: true });
+            const destination = courseId
+              ? `/workspace/courses/${encodeURIComponent(courseId)}`
+              : '/c/new';
+            navigate(`${loginPage()}?redirect_to=${encodeURIComponent(destination)}`, {
+              replace: true,
+            });
             return 0;
           } else {
             return prevCountdown - 1;
@@ -76,6 +111,26 @@ const Registration: React.FC = () => {
       }
     },
   });
+
+  if (isAuthenticated && token) {
+    return (
+      <>
+        {errorMessage ? (
+          <ErrorMessage>
+            {localize('com_auth_error_create')} {errorMessage}
+          </ErrorMessage>
+        ) : (
+          <div
+            className="flex items-center justify-center gap-2 rounded-xl border border-border-light bg-surface-secondary px-3.5 py-4 text-sm text-text-secondary"
+            role="status"
+          >
+            <Spinner className="size-4" />
+            <span>{isSubmitting ? 'Joining course…' : 'Opening course…'}</span>
+          </div>
+        )}
+      </>
+    );
+  }
 
   const renderInput = (id: string, label: TranslationKeys, type: string, validation: object) => {
     const fieldLabel = localize(label);
@@ -263,7 +318,7 @@ const Registration: React.FC = () => {
           <p className="my-4 text-center text-sm font-light text-gray-700 dark:text-white">
             {localize('com_auth_already_have_account')}{' '}
             <a
-              href={loginPage()}
+              href={loginUrl}
               aria-label="Login"
               className="inline-flex p-1 text-sm font-medium text-green-600 transition-colors hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
             >

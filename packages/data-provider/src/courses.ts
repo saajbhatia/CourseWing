@@ -329,6 +329,10 @@ export const inviteCourseMembers = (
 export const createCourseShareLink = (courseId: string): Promise<CourseShareLink> =>
   request.post(`${courseRoot(courseId)}/share-link`);
 
+export const joinCourseFromInvitation = (
+  token: string,
+): Promise<{ joined: true; courseId: string }> => request.post(`${root()}/join`, { token });
+
 export const getCourseProfile = (courseId: string): Promise<CourseProfile> =>
   request.get(`${courseRoot(courseId)}/profile`);
 
