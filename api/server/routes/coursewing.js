@@ -308,7 +308,17 @@ router.get('/canvas', optionalJwtAuth, async (req, res) => {
       await retryPendingRevocation(userId);
     }
     const mappedTenantId = userId ? await getCourseWingTenantId(userId) : null;
-    const identity = await getCourseWingCanvasIdentity(userId);
+    let identity;
+    try {
+      identity = await getCourseWingCanvasIdentity(userId);
+    } catch (error) {
+      // No personal mapping and no server default: offer the connect form
+      // instead of an error (Google-Classroom-only deployments have no default).
+      if (!mappedTenantId) {
+        return res.json({ enabled: true, connected: false });
+      }
+      throw error;
+    }
 
     const { ok, body } = await serviceFetch('/api/coursewing/tenant', {
       headers: tenantHeaders(identity.tenantId),
