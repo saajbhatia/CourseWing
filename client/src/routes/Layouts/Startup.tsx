@@ -31,17 +31,20 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
 
   useEffect(() => {
     if (isAuthenticated) {
+      const isCourseInvitation =
+        location.pathname.endsWith('/register') &&
+        new URLSearchParams(location.search).has('token');
       const hasPendingRedirect =
         new URLSearchParams(window.location.search).has(REDIRECT_PARAM) ||
         sessionStorage.getItem(SESSION_KEY) != null;
-      if (!hasPendingRedirect) {
+      if (!hasPendingRedirect && !isCourseInvitation) {
         navigate('/c/new', { replace: true });
       }
     }
     if (data) {
       setStartupConfig(data);
     }
-  }, [isAuthenticated, navigate, data]);
+  }, [isAuthenticated, navigate, data, location.pathname, location.search]);
 
   useEffect(() => {
     document.title = startupConfig?.appTitle || 'LibreChat';
@@ -60,6 +63,7 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
     startupConfigError,
     startupConfig,
     isFetching,
+    isAuthenticated: Boolean(isAuthenticated),
   };
 
   return (
@@ -70,6 +74,7 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
       startupConfigError={startupConfigError}
       pathname={location.pathname}
       error={error}
+      isAuthenticated={isAuthenticated}
     >
       <Outlet context={contextValue} />
     </AuthLayout>

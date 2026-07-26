@@ -14,6 +14,7 @@ jest.mock('librechat-data-provider/react-query');
 
 afterEach(() => {
   window.history.replaceState({}, '', '/');
+  sessionStorage.clear();
 });
 
 const mockStartupConfig = {
@@ -192,6 +193,25 @@ test('lets a student enter their own email from a course share link', () => {
   expect(getByRole('status')).toHaveTextContent('Create your account to join the course.');
   expect(email).toHaveValue('');
   expect(email).not.toHaveAttribute('readonly');
+  expect(getByRole('link', { name: 'Login' })).toHaveAttribute(
+    'href',
+    '/login?redirect_to=%2Fregister%3Ftoken%3Dcourse-share-token%26courseName%3DProject%2520Studio',
+  );
+});
+
+test('preserves a course invitation before starting Google sign-in', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/register?token=course-share-token&course=course-1&courseName=Project%20Studio',
+  );
+
+  const { getByRole } = setup();
+  await userEvent.click(getByRole('link', { name: /Continue with Google/i }));
+
+  expect(sessionStorage.getItem('post_login_redirect_to')).toBe(
+    '/register?token=course-share-token&course=course-1&courseName=Project%20Studio',
+  );
 });
 
 // test('calls registerUser.mutate on registration', async () => {

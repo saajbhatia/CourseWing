@@ -12,7 +12,7 @@ import {
 } from '~/utils';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
-import { usePendingGreeting } from '~/components/LearnLight/utils';
+import { usePendingGreeting } from '~/components/CourseWing/utils';
 import AgentContact from '~/components/Agents/AgentContact';
 import ConvoIcon from '~/components/Endpoints/ConvoIcon';
 import { useLocalize, useAuthContext } from '~/hooks';
@@ -80,7 +80,7 @@ export default function Landing({ centerFormOnLanding }: { centerFormOnLanding: 
   const pendingGreeting = usePendingGreeting();
   const name = entity?.name ?? brandedSpecLabel;
   const description =
-    ((startupConfig?.learnLightEnabled === true ? pendingGreeting : null) ||
+    ((startupConfig?.courseWingEnabled === true ? pendingGreeting : null) ||
       entity?.description ||
       brandedSpecDescription ||
       conversation?.greeting) ??

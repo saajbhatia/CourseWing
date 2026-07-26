@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Bot, MessageSquarePlus, Send, Sparkles, X } from 'lucide-react';
 import { Button, Textarea } from '@librechat/client';
-import { createCourseChatHandoff } from '~/components/LearnLight/utils';
+import { createCourseChatHandoff } from '~/components/CourseWing/utils';
 import { isNativeCourseDataChangedMessage } from '../assistantEvents';
 
 const studentSuggestions: Record<string, string[]> = {
@@ -156,7 +156,7 @@ export function buildCourseChatUrl({
   const params = new URLSearchParams({
     endpoint: COURSE_AI_ENDPOINT,
     model: COURSE_AI_MODEL,
-    learnlight: handoffId,
+    coursewing: handoffId,
     embed: 'course',
   });
   return `/c/new?${params.toString()}`;

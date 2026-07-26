@@ -480,7 +480,7 @@ describe('useQueryParams', () => {
     expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('consumes a one-time LearnLight handoff without putting course data in URL params', () => {
+  it('consumes a one-time CourseWing handoff without putting course data in URL params', () => {
     const prefix = 'Canvas course ID: 42\nCurrent Canvas course: Chemistry';
     const mockSetValue = jest.fn();
     const mockSubmitMessage = jest.fn();
@@ -507,10 +507,10 @@ describe('useQueryParams', () => {
       }),
     });
     sessionStorage.setItem(
-      'learnlight:chat-handoff:handoff123',
+      'coursewing:chat-handoff:handoff123',
       JSON.stringify({ promptPrefix: prefix, prompt: 'Build a private study plan' }),
     );
-    setUrlParams({ learnlight: 'handoff123' });
+    setUrlParams({ coursewing: 'handoff123' });
 
     renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
     act(() => {
@@ -523,7 +523,7 @@ describe('useQueryParams', () => {
       expect.objectContaining({ shouldValidate: true }),
     );
     expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem('learnlight:chat-handoff:handoff123')).toBeNull();
+    expect(sessionStorage.getItem('coursewing:chat-handoff:handoff123')).toBeNull();
   });
 
   it('waits for startup config before consuming an explicit course prompt', () => {
@@ -542,7 +542,7 @@ describe('useQueryParams', () => {
       modelSpecs: { list: never[] };
     } | null = null;
     (useSearchParams as jest.Mock).mockReturnValue([
-      new URLSearchParams({ learnlight: handoffId }),
+      new URLSearchParams({ coursewing: handoffId }),
       mockSetSearchParams,
     ]);
     (useQueryClient as jest.Mock).mockReturnValue({
@@ -567,7 +567,7 @@ describe('useQueryParams', () => {
       isAuthenticated: true,
     });
     sessionStorage.setItem(
-      `learnlight:chat-handoff:${handoffId}`,
+      `coursewing:chat-handoff:${handoffId}`,
       JSON.stringify({ promptPrefix: prefix, prompt: 'Review chapter 4' }),
     );
 
@@ -576,7 +576,7 @@ describe('useQueryParams', () => {
       jest.advanceTimersByTime(6_000);
     });
 
-    expect(sessionStorage.getItem(`learnlight:chat-handoff:${handoffId}`)).not.toBeNull();
+    expect(sessionStorage.getItem(`coursewing:chat-handoff:${handoffId}`)).not.toBeNull();
     expect(mockSubmitMessage).not.toHaveBeenCalled();
 
     startupConfig = { interface: { autoSubmitFromUrl: false }, modelSpecs: { list: [] } };
@@ -584,7 +584,7 @@ describe('useQueryParams', () => {
       jest.advanceTimersByTime(100);
     });
 
-    expect(sessionStorage.getItem(`learnlight:chat-handoff:${handoffId}`)).toBeNull();
+    expect(sessionStorage.getItem(`coursewing:chat-handoff:${handoffId}`)).toBeNull();
     expect(mockSubmitMessage).toHaveBeenCalledTimes(1);
     expect(mockSetSearchParams).toHaveBeenCalledWith(new URLSearchParams(), { replace: true });
   });
@@ -595,10 +595,10 @@ describe('useQueryParams', () => {
     ['malformed', 'malformed123', '{not-json'],
     ['empty', 'empty-prefix-123', JSON.stringify({ promptPrefix: '   ' })],
   ])(
-    'clears the URL and pending course state for an %s LearnLight handoff',
+    'clears the URL and pending course state for an %s CourseWing handoff',
     (_label, handoffId, storedValue) => {
       const mockSetSearchParams = jest.fn();
-      const searchParams = new URLSearchParams({ learnlight: handoffId });
+      const searchParams = new URLSearchParams({ coursewing: handoffId });
       const mockTextAreaRef = {
         current: {
           focus: jest.fn(),
@@ -606,10 +606,10 @@ describe('useQueryParams', () => {
         } as unknown as HTMLTextAreaElement,
       };
       (useSearchParams as jest.Mock).mockReturnValue([searchParams, mockSetSearchParams]);
-      sessionStorage.setItem('learnlight:pendingCourse', '42');
-      sessionStorage.setItem('learnlight:pendingGreeting', 'Ready to study?');
+      sessionStorage.setItem('coursewing:pendingCourse', '42');
+      sessionStorage.setItem('coursewing:pendingGreeting', 'Ready to study?');
       if (storedValue != null) {
-        sessionStorage.setItem(`learnlight:chat-handoff:${handoffId}`, storedValue);
+        sessionStorage.setItem(`coursewing:chat-handoff:${handoffId}`, storedValue);
       }
 
       renderHook(() => useQueryParams({ textAreaRef: mockTextAreaRef }));
@@ -617,9 +617,9 @@ describe('useQueryParams', () => {
         jest.advanceTimersByTime(100);
       });
 
-      expect(sessionStorage.getItem('learnlight:pendingCourse')).toBeNull();
-      expect(sessionStorage.getItem('learnlight:pendingGreeting')).toBeNull();
-      expect(sessionStorage.getItem(`learnlight:chat-handoff:${handoffId}`)).toBeNull();
+      expect(sessionStorage.getItem('coursewing:pendingCourse')).toBeNull();
+      expect(sessionStorage.getItem('coursewing:pendingGreeting')).toBeNull();
+      expect(sessionStorage.getItem(`coursewing:chat-handoff:${handoffId}`)).toBeNull();
       expect(mockSetSearchParams).toHaveBeenCalledTimes(1);
       const [nextSearchParams, options] = mockSetSearchParams.mock.calls[0];
       expect(nextSearchParams).toBeInstanceOf(URLSearchParams);

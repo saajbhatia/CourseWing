@@ -608,6 +608,7 @@ export type TLoginLayoutContext = {
   startupConfig: t.TStartupConfig | null;
   startupConfigError: unknown;
   isFetching: boolean;
+  isAuthenticated?: boolean;
   error: string | null;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   headerText: string;

@@ -531,7 +531,7 @@ export const registry: SettingEntry[] = [
     tab: ACCOUNT,
     section: 'connections',
     labelKey: 'com_ui_settings_label_canvas',
-    show: (ctx) => ctx.learnLightEnabled,
+    show: (ctx) => ctx.courseWingEnabled,
     Component: CanvasConnection,
   },
   // Account · Security

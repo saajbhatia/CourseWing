@@ -21,7 +21,7 @@ const { storage, importFileFilter } = require('~/server/routes/files/multer');
 const requireJwtAuth = require('~/server/middleware/requireJwtAuth');
 const { importConversations } = require('~/server/utils/import');
 const getLogStores = require('~/cache/getLogStores');
-const { getLearnLightCanvasIdentity } = require('~/server/services/LearnLight');
+const { getCourseWingCanvasIdentity } = require('~/server/services/CourseWing');
 const db = require('~/models');
 
 const assistantClients = {
@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
 
   try {
     const canvasIdentity =
-      canvasCourseId != null ? await getLearnLightCanvasIdentity(req.user.id) : null;
+      canvasCourseId != null ? await getCourseWingCanvasIdentity(req.user.id) : null;
     const result = await db.getConvosByCursor(req.user.id, {
       cursor,
       limit,
@@ -93,7 +93,7 @@ router.get('/:conversationId', async (req, res) => {
     if (convo.canvasCourseId != null) {
       try {
         const [identity, conversationAccountKey] = await Promise.all([
-          getLearnLightCanvasIdentity(req.user.id),
+          getCourseWingCanvasIdentity(req.user.id),
           db.getConvoCanvasAccountKey(req.user.id, conversationId),
         ]);
         canvasAccountCurrent =

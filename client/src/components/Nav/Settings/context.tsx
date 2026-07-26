@@ -30,7 +30,7 @@ export function useSettingsContext(): SettingsContextValue {
   const isLocalProvider = user?.provider === 'local';
   const twoFactorEnabled = user?.twoFactorEnabled === true;
   const allowAccountDeletion = startupConfig?.allowAccountDeletion !== false;
-  const learnLightEnabled = startupConfig?.learnLightEnabled === true;
+  const courseWingEnabled = startupConfig?.courseWingEnabled === true;
   const aboutEnabled = startupConfig?.interface?.buildInfo !== false;
   const hasRemoteAgentsBool = hasRemoteAgents === true;
   const hasMultiConvoBool = hasMultiConvo === true;
@@ -47,7 +47,7 @@ export function useSettingsContext(): SettingsContextValue {
       hasUserProvidedEndpoints,
       hasMultiConvo: hasMultiConvoBool,
       hasPrompts: hasPromptsBool,
-      learnLightEnabled,
+      courseWingEnabled,
       isLocalProvider,
       twoFactorEnabled,
       allowAccountDeletion,
@@ -62,7 +62,7 @@ export function useSettingsContext(): SettingsContextValue {
       hasUserProvidedEndpoints,
       hasMultiConvoBool,
       hasPromptsBool,
-      learnLightEnabled,
+      courseWingEnabled,
       isLocalProvider,
       twoFactorEnabled,
       allowAccountDeletion,

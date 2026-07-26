@@ -18,9 +18,9 @@ const {
 } = require('librechat-data-provider');
 const { updateUserPluginAuth, deleteUserPluginAuth } = require('~/server/services/PluginService');
 const {
-  isReservedLearnLightAuthField,
-  isReservedLearnLightPluginKey,
-} = require('~/server/services/LearnLightAuth');
+  isReservedCourseWingAuthField,
+  isReservedCourseWingPluginKey,
+} = require('~/server/services/CourseWingAuth');
 const { verifyOTPOrBackupCode } = require('~/server/services/twoFactorService');
 const { verifyEmail, resendVerificationEmail } = require('~/server/services/AuthService');
 const { getMCPManager, getFlowStateManager, getMCPServersRegistry } = require('~/config');
@@ -297,8 +297,8 @@ const updateUserPluginsController = async (req, res) => {
   try {
     const requestedAuthFields = auth != null && typeof auth === 'object' ? Object.keys(auth) : [];
     if (
-      isReservedLearnLightPluginKey(pluginKey) ||
-      requestedAuthFields.some(isReservedLearnLightAuthField)
+      isReservedCourseWingPluginKey(pluginKey) ||
+      requestedAuthFields.some(isReservedCourseWingAuthField)
     ) {
       return res.status(403).json({ message: 'This plugin authentication namespace is reserved.' });
     }

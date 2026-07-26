@@ -147,7 +147,7 @@ Use a route namespace that does not collide with the existing Canvas course rout
 /workspace/courses/:courseId/*
 ```
 
-Do not modify or import from `client/src/components/LearnLight` for this feature.
+Do not modify or import from `client/src/components/CourseWing` for this feature.
 
 ### Teacher navigation
 
@@ -636,9 +636,9 @@ All user-facing copy uses `useLocalize()` and English translation keys.
 
 The new feature must not:
 
-- Import from `packages/api/src/learnlight`
-- Import from `client/src/components/LearnLight`
-- Call `/api/learnlight`
+- Import from `packages/api/src/coursewing`
+- Import from `client/src/components/CourseWing`
+- Call `/api/coursewing`
 - Read `canvasCourseId`, `canvasAccountKey`, or Canvas tokens
 - Depend on the external Canvas service
 
@@ -944,8 +944,8 @@ Exit criteria:
 The other agent’s Canvas teacher UI work can remain on `main`. This branch minimizes collisions by:
 
 - Using `/workspace/courses/*` instead of the existing `/courses/:canvasCourseId` route
-- Creating `client/src/components/Courses` instead of editing `LearnLight`
-- Creating `packages/api/src/courses` instead of editing `learnlight`
+- Creating `client/src/components/Courses` instead of editing `CourseWing`
+- Creating `packages/api/src/courses` instead of editing `coursewing`
 - Creating new native course schemas instead of changing Canvas service data
 - Keeping the only legacy API change to route registration
 - Using course source adapters as a future integration seam

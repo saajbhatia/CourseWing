@@ -984,7 +984,7 @@ describe('BaseClient', () => {
       const req = {
         user,
         resolvedConversation: existingConvo,
-        learnLightCanvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        courseWingCanvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
       };
 
       getConvo.mockClear();

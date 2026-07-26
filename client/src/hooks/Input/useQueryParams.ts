@@ -25,7 +25,7 @@ import {
   clearPendingCourse,
   consumeCourseChatHandoff,
   type CourseChatHandoff,
-} from '~/components/LearnLight/utils';
+} from '~/components/CourseWing/utils';
 import store from '~/store';
 
 const PROJECT_ID_SEARCH_PARAM = 'projectId';
@@ -307,9 +307,9 @@ export default function useQueryParams({
         queryParams[key] = value;
       });
 
-      const hasCourseHandoffParam = Object.prototype.hasOwnProperty.call(queryParams, 'learnlight');
-      const courseHandoffId = queryParams.learnlight ?? null;
-      delete queryParams.learnlight;
+      const hasCourseHandoffParam = Object.prototype.hasOwnProperty.call(queryParams, 'coursewing');
+      const courseHandoffId = queryParams.coursewing ?? null;
+      delete queryParams.coursewing;
       if (courseHandoffId && courseHandoffRef.current?.id !== courseHandoffId) {
         courseHandoffRef.current = {
           id: courseHandoffId,
@@ -381,7 +381,7 @@ export default function useQueryParams({
         submissionHandledRef.current = true;
         clearInterval(intervalId);
         const remainingParams = new URLSearchParams(searchParams);
-        remainingParams.delete('learnlight');
+        remainingParams.delete('coursewing');
         setSearchParams(remainingParams, { replace: true });
         return;
       }

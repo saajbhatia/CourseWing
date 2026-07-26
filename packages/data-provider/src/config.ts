@@ -1505,7 +1505,7 @@ export type TStartupConfig = {
   sharePointPickerGraphScope?: string;
   sharePointPickerSharePointScope?: string;
   openidReuseTokens?: boolean;
-  learnLightEnabled?: boolean;
+  courseWingEnabled?: boolean;
   allowAccountDeletion: boolean;
   minPasswordLength?: number;
   webSearch?: {

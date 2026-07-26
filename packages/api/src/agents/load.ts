@@ -15,7 +15,7 @@ import type {
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import { nativeCourseToolKeys } from '~/courses';
-import { isLearnLightEnabled, learnLightToolKeys } from '~/learnlight';
+import { isCourseWingEnabled, courseWingToolKeys } from '~/coursewing';
 import { requiresEphemeralUserConnection } from '~/mcp/utils';
 import { getCustomEndpointConfig } from '~/app/config';
 
@@ -28,12 +28,12 @@ const nativeCourseAssistantGuidance = [
   'Confirm completed actions with human-readable course, project, file, or record names, and keep any undo receipt available internally for a later undo request.',
 ].join(' ');
 
-function applyLearnLightCourseOverlay(agent: Agent, promptPrefix: string): Agent {
+function applyCourseWingCourseOverlay(agent: Agent, promptPrefix: string): Agent {
   const instructions = [agent.instructions, promptPrefix]
     .filter((section): section is string => typeof section === 'string' && section.trim() !== '')
     .join('\n\n');
   const tools = new Set(agent.tools ?? []);
-  for (const toolKey of learnLightToolKeys) {
+  for (const toolKey of courseWingToolKeys) {
     tools.add(toolKey);
   }
 
@@ -81,8 +81,8 @@ export interface LoadAgentParams {
   agent_id: string;
   endpoint: string;
   model_parameters?: AgentModelParameters & { model?: string };
-  /** Applies request-scoped LearnLight context to the primary chat agent only. */
-  applyLearnLightCourseContext?: boolean;
+  /** Applies request-scoped CourseWing context to the primary chat agent only. */
+  applyCourseWingCourseContext?: boolean;
 }
 
 async function canUseNativeCourseTools(
@@ -135,8 +135,8 @@ export async function loadEphemeralAgent(
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
   }
-  if (isLearnLightEnabled()) {
-    tools.push(...learnLightToolKeys);
+  if (isCourseWingEnabled()) {
+    tools.push(...courseWingToolKeys);
   }
   const hasNativeCourseAccess = await canUseNativeCourseTools(req, deps);
   if (hasNativeCourseAccess) {
@@ -244,7 +244,7 @@ export async function loadAgent(
   params: LoadAgentParams,
   deps: LoadAgentDeps,
 ): Promise<Agent | null> {
-  const { req, spec, agent_id, endpoint, model_parameters, applyLearnLightCourseContext } = params;
+  const { req, spec, agent_id, endpoint, model_parameters, applyCourseWingCourseContext } = params;
   if (!agent_id) {
     return null;
   }
@@ -265,21 +265,21 @@ export async function loadAgent(
 
   const promptPrefix = req.body?.promptPrefix;
   let runtimeAgent: Agent = agentWithVersion;
-  if (!isLearnLightEnabled() && Array.isArray(agentWithVersion.tools)) {
+  if (!isCourseWingEnabled() && Array.isArray(agentWithVersion.tools)) {
     const filteredTools = agentWithVersion.tools.filter(
-      (toolKey) => !learnLightToolKeys.includes(toolKey as (typeof learnLightToolKeys)[number]),
+      (toolKey) => !courseWingToolKeys.includes(toolKey as (typeof courseWingToolKeys)[number]),
     );
     if (filteredTools.length !== agentWithVersion.tools.length) {
       runtimeAgent = { ...runtimeAgent, tools: filteredTools };
     }
   }
-  const isLearnLightCourseRequest =
-    applyLearnLightCourseContext === true &&
-    isLearnLightEnabled() &&
+  const isCourseWingCourseRequest =
+    applyCourseWingCourseContext === true &&
+    isCourseWingEnabled() &&
     typeof promptPrefix === 'string' &&
     extractCanvasCourseId(promptPrefix) != null;
-  if (isLearnLightCourseRequest) {
-    runtimeAgent = applyLearnLightCourseOverlay(runtimeAgent, promptPrefix);
+  if (isCourseWingCourseRequest) {
+    runtimeAgent = applyCourseWingCourseOverlay(runtimeAgent, promptPrefix);
   }
 
   if (await canUseNativeCourseTools(req, deps)) {

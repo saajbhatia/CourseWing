@@ -8,7 +8,7 @@ import type { NavLink } from '~/common';
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
 import { useActivePanel, resolveActivePanel, DEFAULT_PANEL } from '~/Providers';
 import { CLOSE_SIDEBAR_ID } from '~/components/Chat/Menus/OpenSidebar';
-import { clearPendingCourse } from '~/components/LearnLight/utils';
+import { clearPendingCourse } from '~/components/CourseWing/utils';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { clearMessagesCache, cn } from '~/utils';
 import store from '~/store';

@@ -22,8 +22,8 @@ import {
   useAddedChatContext,
   useAssistantsMapContext,
 } from '~/Providers';
-import PersonaSelector from '~/components/LearnLight/PersonaSelector';
-import FeedbackButton from '~/components/LearnLight/FeedbackButton';
+import PersonaSelector from '~/components/CourseWing/PersonaSelector';
+import FeedbackButton from '~/components/CourseWing/FeedbackButton';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import { cn, getModelSpec, removeFocusRings } from '~/utils';
 import { useGetStartupConfig } from '~/data-provider';
@@ -379,7 +379,7 @@ const ChatForm = memo(function ChatForm({
                   setFilesLoading={setFilesLoading}
                 />
               </div>
-              {startupConfig?.learnLightEnabled === true && (
+              {startupConfig?.courseWingEnabled === true && (
                 <>
                   <PersonaSelector />
                   {isAuthenticated && <FeedbackButton />}

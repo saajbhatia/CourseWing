@@ -50,6 +50,11 @@ const createTestRouter = (initialEntry: string, isAuthenticated: boolean) =>
         children: [{ index: true, element: <ChildRoute /> }],
       },
       {
+        path: '/register',
+        element: <StartupLayout isAuthenticated={isAuthenticated} />,
+        children: [{ index: true, element: <ChildRoute /> }],
+      },
+      {
         path: '/c/new',
         element: <NewConversation />,
       },
@@ -99,6 +104,18 @@ describe('StartupLayout — redirect race condition', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(router.state.location.pathname).toBe('/login');
+  });
+
+  it('does NOT navigate away from an authenticated course invitation', async () => {
+    window.history.replaceState({}, '', '/register?token=share-secret&course=course-1');
+
+    const router = createTestRouter('/register?token=share-secret&course=course-1', true);
+    render(<RouterProvider router={router} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(router.state.location.pathname).toBe('/register');
+    expect(router.state.location.search).toContain('token=share-secret');
   });
 
   it('does NOT navigate when not authenticated', async () => {

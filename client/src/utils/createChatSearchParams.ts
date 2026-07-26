@@ -62,7 +62,7 @@ export function processValidSettings(queryParams: Record<string, string>) {
 
 const allowedParams = Object.keys(tQueryParamsSchema.shape);
 
-const transientChatSearchParamKeys = ['learnlight'] as const;
+const transientChatSearchParamKeys = ['coursewing'] as const;
 
 /**
  * Conversation state updates rewrite the chat query string. Keep opaque, one-time workflow

@@ -14,7 +14,7 @@ const requireJwtAuth = require('./requireJwtAuth');
 const { requireRumProxyAuth } = require('./requireJwtAuth');
 const configMiddleware = require('./config/app');
 const validateModel = require('./validateModel');
-const learnLightContext = require('./learnlight');
+const courseWingContext = require('./coursewing');
 const moderateText = require('./moderateText');
 const logHeaders = require('./logHeaders');
 const setHeaders = require('./setHeaders');
@@ -38,7 +38,7 @@ module.exports = {
   logHeaders,
   moderateText,
   validateModel,
-  learnLightContext,
+  courseWingContext,
   requireJwtAuth,
   requireRumProxyAuth,
   setTwoFactorTempUser,

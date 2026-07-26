@@ -15,6 +15,7 @@ function AuthLayout({
   startupConfigError,
   pathname,
   error,
+  isAuthenticated = false,
 }: {
   children: React.ReactNode;
   header: React.ReactNode;
@@ -23,6 +24,7 @@ function AuthLayout({
   startupConfigError: unknown | null | undefined;
   pathname: string;
   error: TranslationKeys | null;
+  isAuthenticated?: boolean;
 }) {
   const localize = useLocalize();
 
@@ -84,7 +86,8 @@ function AuthLayout({
             </h1>
           )}
           {children}
-          {!pathname.includes('2fa') &&
+          {!isAuthenticated &&
+            !pathname.includes('2fa') &&
             (pathname.includes('login') || pathname.includes('register')) && (
               <SocialLoginRender startupConfig={startupConfig} />
             )}

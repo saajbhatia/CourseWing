@@ -1,5 +1,5 @@
 import { buildCourseChatUrl } from './AssistantDrawer';
-import { consumeCourseChatHandoff } from '~/components/LearnLight/utils';
+import { consumeCourseChatHandoff } from '~/components/CourseWing/utils';
 import {
   NATIVE_COURSE_DATA_CHANGED_EVENT,
   getNativeCourseToolResult,
@@ -39,7 +39,7 @@ describe('buildCourseChatUrl', () => {
     expect(url.searchParams.get('submit')).toBeNull();
     expect(url.searchParams.get('q')).toBeNull();
 
-    const handoff = consumeCourseChatHandoff(url.searchParams.get('learnlight'));
+    const handoff = consumeCourseChatHandoff(url.searchParams.get('coursewing'));
     expect(handoff?.prompt).toBe('Create a paper record');
     expect(handoff?.prompt).not.toContain('course-123');
     expect(handoff?.prompt).not.toContain('project-456');
@@ -62,7 +62,7 @@ describe('buildCourseChatUrl', () => {
       'http://localhost',
     );
 
-    const handoff = consumeCourseChatHandoff(url.searchParams.get('learnlight'));
+    const handoff = consumeCourseChatHandoff(url.searchParams.get('coursewing'));
     expect(handoff?.prompt).toBe('Summarize today');
     expect(handoff?.promptPrefix).not.toContain('internal project ID');
   });
@@ -79,7 +79,7 @@ describe('buildCourseChatUrl', () => {
       'http://localhost',
     );
 
-    const handoff = consumeCourseChatHandoff(url.searchParams.get('learnlight'));
+    const handoff = consumeCourseChatHandoff(url.searchParams.get('coursewing'));
     expect(handoff?.promptPrefix).toContain(`The teacher's current local date is 2026-07-18.`);
     expect(handoff?.promptPrefix).toContain(`The authenticated user's IANA timezone is`);
     expect(handoff?.promptPrefix).toContain('Never default an unspecified local time to UTC or Z.');

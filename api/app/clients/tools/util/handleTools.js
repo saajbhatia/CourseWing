@@ -7,11 +7,11 @@ const {
   createSafeUser,
   mcpToolPattern,
   loadWebSearchAuth,
-  createLearnLightTool,
+  createCourseWingTool,
   createCourseService,
   createNativeCourseTool,
-  isLearnLightEnabled,
-  isLearnLightToolKey,
+  isCourseWingEnabled,
+  isCourseWingToolKey,
   isNativeCourseToolKey,
   buildInlineMemoryTool,
   getCodeApiAuthHeaders,
@@ -55,7 +55,7 @@ const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
-const { getLearnLightCanvasIdentity } = require('~/server/services/LearnLight');
+const { getCourseWingCanvasIdentity } = require('~/server/services/CourseWing');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
@@ -395,8 +395,8 @@ const loadTools = async ({
         });
       };
       continue;
-    } else if (isLearnLightToolKey(tool)) {
-      if (!isLearnLightEnabled()) {
+    } else if (isCourseWingToolKey(tool)) {
+      if (!isCourseWingEnabled()) {
         continue;
       }
       requestedTools[tool] = async () => {
@@ -404,9 +404,9 @@ const loadTools = async ({
         // Falling back to the current mapping is safe only for general chats,
         // which do not carry a verified Canvas course/account scope.
         const tenantId =
-          options.req?.learnLightCanvasTenantId ??
-          (await getLearnLightCanvasIdentity(options.req?.user?.id ?? user)).tenantId;
-        return createLearnLightTool(tool, {
+          options.req?.courseWingCanvasTenantId ??
+          (await getCourseWingCanvasIdentity(options.req?.user?.id ?? user)).tenantId;
+        return createCourseWingTool(tool, {
           tenantId,
           userName: options.req?.user?.name ?? options.req?.user?.username,
           userEmail: options.req?.user?.email,

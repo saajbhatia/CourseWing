@@ -10,7 +10,7 @@ const mockGetMCPServerTools = jest.fn();
 const mockCreateMCPTool = jest.fn();
 const mockCreateMCPTools = jest.fn();
 const mockGetServerConfig = jest.fn();
-const mockCreateLearnLightTool = jest.fn((tool, options) => ({
+const mockCreateCourseWingTool = jest.fn((tool, options) => ({
   name: tool,
   tenantId: options.tenantId,
 }));
@@ -20,20 +20,20 @@ const mockCreateNativeCourseTool = jest.fn((tool, options) => ({
   name: tool,
   requestFileIds: options.requestFileIds,
 }));
-const mockGetLearnLightCanvasIdentity = jest.fn();
+const mockGetCourseWingCanvasIdentity = jest.fn();
 
 jest.mock('@librechat/api', () => ({
   ...jest.requireActual('@librechat/api'),
-  createLearnLightTool: (...args) => mockCreateLearnLightTool(...args),
+  createCourseWingTool: (...args) => mockCreateCourseWingTool(...args),
   createCourseService: (...args) => mockCreateCourseService(...args),
   createNativeCourseTool: (...args) => mockCreateNativeCourseTool(...args),
-  isLearnLightEnabled: jest.fn(() => true),
+  isCourseWingEnabled: jest.fn(() => true),
 }));
 
 jest.mock('~/server/services/PluginService', () => mockPluginService);
 
-jest.mock('~/server/services/LearnLight', () => ({
-  getLearnLightCanvasIdentity: (...args) => mockGetLearnLightCanvasIdentity(...args),
+jest.mock('~/server/services/CourseWing', () => ({
+  getCourseWingCanvasIdentity: (...args) => mockGetCourseWingCanvasIdentity(...args),
 }));
 
 jest.mock('~/server/services/Config', () => ({
@@ -328,7 +328,7 @@ describe('Tool Handlers', () => {
     });
 
     it('keeps course-chat tools on the tenant verified by middleware if the mapping changes', async () => {
-      mockGetLearnLightCanvasIdentity.mockResolvedValue({
+      mockGetCourseWingCanvasIdentity.mockResolvedValue({
         tenantId: 'tenant-after-account-switch',
         canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
       });
@@ -338,31 +338,31 @@ describe('Tool Handlers', () => {
           name: 'Fake User',
           email: 'fakeuser@example.com',
         },
-        learnLightCanvasTenantId: 'tenant-verified-before-switch',
+        courseWingCanvasTenantId: 'tenant-verified-before-switch',
       };
 
       const toolMap = await loadTools({
         user: fakeUser._id.toString(),
-        tools: ['learnlight_get_assignments'],
+        tools: ['coursewing_get_assignments'],
         returnMap: true,
         options: { req },
       });
-      const tool = await toolMap.learnlight_get_assignments();
+      const tool = await toolMap.coursewing_get_assignments();
 
-      expect(mockGetLearnLightCanvasIdentity).not.toHaveBeenCalled();
-      expect(mockCreateLearnLightTool).toHaveBeenCalledWith('learnlight_get_assignments', {
+      expect(mockGetCourseWingCanvasIdentity).not.toHaveBeenCalled();
+      expect(mockCreateCourseWingTool).toHaveBeenCalledWith('coursewing_get_assignments', {
         tenantId: 'tenant-verified-before-switch',
         userName: 'Fake User',
         userEmail: 'fakeuser@example.com',
       });
       expect(tool).toEqual({
-        name: 'learnlight_get_assignments',
+        name: 'coursewing_get_assignments',
         tenantId: 'tenant-verified-before-switch',
       });
     });
 
-    it('resolves the current Canvas mapping for a general-chat LearnLight tool', async () => {
-      mockGetLearnLightCanvasIdentity.mockResolvedValue({
+    it('resolves the current Canvas mapping for a general-chat CourseWing tool', async () => {
+      mockGetCourseWingCanvasIdentity.mockResolvedValue({
         tenantId: 'tenant-current',
         canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
       });
@@ -370,15 +370,15 @@ describe('Tool Handlers', () => {
 
       const toolMap = await loadTools({
         user: userId,
-        tools: ['learnlight_get_assignments'],
+        tools: ['coursewing_get_assignments'],
         returnMap: true,
         options: { req: { user: { id: userId } } },
       });
-      await toolMap.learnlight_get_assignments();
+      await toolMap.coursewing_get_assignments();
 
-      expect(mockGetLearnLightCanvasIdentity).toHaveBeenCalledWith(userId);
-      expect(mockCreateLearnLightTool).toHaveBeenCalledWith(
-        'learnlight_get_assignments',
+      expect(mockGetCourseWingCanvasIdentity).toHaveBeenCalledWith(userId);
+      expect(mockCreateCourseWingTool).toHaveBeenCalledWith(
+        'coursewing_get_assignments',
         expect.objectContaining({ tenantId: 'tenant-current' }),
       );
     });

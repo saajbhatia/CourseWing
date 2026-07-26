@@ -104,7 +104,7 @@ afterEach(() => {
   delete process.env.ANALYTICS_GTM_ID;
   delete process.env.CUSTOM_FOOTER;
   delete process.env.HELP_AND_FAQ_URL;
-  delete process.env.LEARNLIGHT_ENABLED;
+  delete process.env.COURSEWING_ENABLED;
 });
 
 describe('GET /api/config', () => {
@@ -155,7 +155,7 @@ describe('GET /api/config', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.body).not.toHaveProperty('modelSpecs');
-      expect(response.body).not.toHaveProperty('learnLightEnabled');
+      expect(response.body).not.toHaveProperty('courseWingEnabled');
       expect(response.body).not.toHaveProperty('balance');
       expect(response.body).not.toHaveProperty('webSearch');
       expect(response.body).not.toHaveProperty('bundlerURL');
@@ -167,15 +167,15 @@ describe('GET /api/config', () => {
       expect(response.body).not.toHaveProperty('conversationImportMaxFileSize');
     });
 
-    it('should not expose LearnLight availability before login', async () => {
-      process.env.LEARNLIGHT_ENABLED = 'true';
+    it('should not expose CourseWing availability before login', async () => {
+      process.env.COURSEWING_ENABLED = 'true';
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(null);
 
       const response = await request(app).get('/api/config');
 
       expect(response.statusCode).toBe(200);
-      expect(response.body).not.toHaveProperty('learnLightEnabled');
+      expect(response.body).not.toHaveProperty('courseWingEnabled');
     });
 
     it('should strip authenticated-only informational fields from unauthenticated response (#12688)', async () => {

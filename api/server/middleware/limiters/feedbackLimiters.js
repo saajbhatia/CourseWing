@@ -44,7 +44,7 @@ function createFeedbackLimiters(overrides) {
     max: ipMax,
     handler: feedbackLimitHandler,
     keyGenerator: removePorts,
-    store: limiterCache('learnlight_feedback_ip_limiter'),
+    store: limiterCache('coursewing_feedback_ip_limiter'),
   });
   const feedbackUserLimiter = rateLimit({
     windowMs: userWindowMinutes * 60 * 1000,
@@ -53,7 +53,7 @@ function createFeedbackLimiters(overrides) {
     keyGenerator(req) {
       return req.user?.id;
     },
-    store: limiterCache('learnlight_feedback_user_limiter'),
+    store: limiterCache('coursewing_feedback_user_limiter'),
   });
 
   return { feedbackIpLimiter, feedbackUserLimiter };

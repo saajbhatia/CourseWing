@@ -19,8 +19,8 @@ import {
   getPendingCourse,
   clearPendingCourse,
   iconButtonClassName,
-} from '~/components/LearnLight/utils';
-import { recordCourseChat } from '~/components/LearnLight/chats';
+} from '~/components/CourseWing/utils';
+import { recordCourseChat } from '~/components/CourseWing/chats';
 import { useConversationsInfiniteQuery, useTitleGeneration } from '~/data-provider';
 import ProjectsSection from '~/components/Conversations/ProjectsSection';
 import CoursesSection from '~/components/Conversations/CoursesSection';
