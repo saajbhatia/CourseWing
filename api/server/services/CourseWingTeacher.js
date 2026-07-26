@@ -73,13 +73,18 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+/* Collection names keep their pre-rebrand "learnlight" spelling: production data
+ * lives there, and data-at-rest identifiers are intentionally not renamed
+ * (see the note atop CourseWingAuth.js). */
 const CourseWingReceipt =
-  mongoose.models.CourseWingReceipt || mongoose.model('CourseWingReceipt', receiptSchema);
+  mongoose.models.CourseWingReceipt ||
+  mongoose.model('CourseWingReceipt', receiptSchema, 'learnlightreceipts');
 const CourseWingCourseSetting =
   mongoose.models.CourseWingCourseSetting ||
-  mongoose.model('CourseWingCourseSetting', courseSettingSchema);
+  mongoose.model('CourseWingCourseSetting', courseSettingSchema, 'learnlightcoursesettings');
 const CourseWingActivity =
-  mongoose.models.CourseWingActivity || mongoose.model('CourseWingActivity', activitySchema);
+  mongoose.models.CourseWingActivity ||
+  mongoose.model('CourseWingActivity', activitySchema, 'learnlightactivities');
 
 const teacherRoleSchema = new mongoose.Schema(
   { email: { type: String, required: true, unique: true, lowercase: true } },
@@ -87,7 +92,7 @@ const teacherRoleSchema = new mongoose.Schema(
 );
 const CourseWingTeacherRole =
   mongoose.models.CourseWingTeacherRole ||
-  mongoose.model('CourseWingTeacherRole', teacherRoleSchema);
+  mongoose.model('CourseWingTeacherRole', teacherRoleSchema, 'learnlightteacherroles');
 
 let assignedTeacherCache = { emails: new Set(), expiresAt: 0 };
 
