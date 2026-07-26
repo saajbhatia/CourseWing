@@ -16,7 +16,7 @@ const {
   getBalanceConfig,
   omitTitleOptions,
   getProviderConfig,
-  memoryInstructions,
+  formatMemoryContext,
   createTokenCounter,
   applyContextToAgent,
   isMemoryAgentEnabled,
@@ -533,10 +533,8 @@ class AgentClient extends BaseClient {
      *  keys + token metadata) is reserved for agents that can call
      *  `delete_memory`; everyone else gets the unkeyed values only. */
     const memories = await this.useMemory();
-    const buildMemoryContext = (text) =>
-      text ? `${memoryInstructions}\n\n# Existing memory about the user:\n${text}` : undefined;
-    const memoryContext = buildMemoryContext(memories?.withoutKeys);
-    const keyedMemoryContext = buildMemoryContext(memories?.withKeys);
+    const memoryContext = formatMemoryContext(memories?.withoutKeys);
+    const keyedMemoryContext = formatMemoryContext(memories?.withKeys);
 
     const sharedRunContext = sharedRunContextParts.join('\n\n');
     const memoryAgentEnabled = isMemoryAgentEnabled(this.options.req.config?.memory);
