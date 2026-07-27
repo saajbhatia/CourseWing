@@ -10,6 +10,16 @@ import { getIconEndpoint, getEntity, getModelSpec } from '~/utils';
 import { useCurrentCoursesQuery } from '~/data-provider/CourseWing';
 import { useSubmitMessage, useLocalize } from '~/hooks';
 
+/** Canvas course names carry section codes and year suffixes ("AP Calculus AB (LF) 25-26") that make chips wrap badly. */
+function shortCourseName(name: string): string {
+  const cleaned = name
+    .replace(/\s*\([^)]{1,8}\)/g, '')
+    .replace(/\s*\b(?:20)?\d{2}\s*[-–/]\s*(?:20)?\d{2}\b\s*$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return cleaned.length >= 3 ? cleaned : name;
+}
+
 const ConversationStarters = () => {
   const localize = useLocalize();
   const { conversation } = useChatContext();
@@ -55,7 +65,9 @@ const ConversationStarters = () => {
     }
     return [
       localize('com_ui_starter_due_week'),
-      ...courses.slice(0, 2).map((course) => localize('com_ui_starter_study_course', { 0: course.name })),
+      ...courses
+        .slice(0, 2)
+        .map((course) => localize('com_ui_starter_study_course', { 0: shortCourseName(course.name) })),
       localize('com_ui_starter_grades'),
     ];
   }, [startupConfig?.courseWingEnabled, courses, localize]);
