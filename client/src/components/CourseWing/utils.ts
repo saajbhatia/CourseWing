@@ -24,7 +24,12 @@ const courseColors = [
   { background: '#a43f75', foreground: '#ffffff' },
 ];
 
-const fakeNowMs = Date.parse(import.meta.env.VITE_COURSEWING_FAKE_NOW ?? '');
+let fakeNowMs = Date.parse(import.meta.env.VITE_COURSEWING_FAKE_NOW ?? '');
+
+/** Demo tenants carry a frozen clock; the connection query feeds it here so course views agree with the data. */
+export function setCourseWingFrozenNow(iso?: string | null): void {
+  fakeNowMs = iso ? Date.parse(iso) : NaN;
+}
 
 /** Canvas names are untrusted text; keep them on one inert prefix line. */
 function prefixValue(value: string): string {

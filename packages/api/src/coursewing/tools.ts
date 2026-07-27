@@ -100,6 +100,23 @@ function syncPartialMessage(courseCount: number): string {
   );
 }
 
+/**
+ * File text is extracted in budgeted batches over several sync runs, so search can
+ * miss documents for a while after the course list looks complete. An empty search
+ * with a backlog must not be reported as "does not exist".
+ */
+async function materialsIndexingMessage(
+  tenantId: string | null | undefined,
+  query: string,
+): Promise<string | null> {
+  const status = await getTenantStatusSafe(tenantId);
+  const backlog = status?.pendingExtraction ?? 0;
+  if (backlog <= 0 || status?.frozenNow != null) {
+    return null;
+  }
+  return `No indexed course material matched "${query}" YET — but ${backlog} course files are still being read into the search index, so this document may exist and simply not be searchable yet. Tell the student you can't see it yet (not that it doesn't exist), suggest asking again in ~15 minutes, and offer to work from whatever they can paste or describe in the meantime.`;
+}
+
 /** Empty results on a freshly connected account usually mean the first sync hasn't finished, not that the student has no courses. */
 async function syncPendingMessage(tenantId?: string | null): Promise<string | null> {
   const status = await getTenantStatusSafe(tenantId);
@@ -224,6 +241,10 @@ function createSearchMaterialsTool(toolOptions: CourseWingToolOptions): DynamicS
           const pending = await syncPendingMessage(toolOptions.tenantId);
           if (pending != null) {
             return pending;
+          }
+          const indexing = await materialsIndexingMessage(toolOptions.tenantId, query);
+          if (indexing != null) {
+            return indexing;
           }
           return `No course materials matched "${query}". Try different keywords, or use coursewing_get_modules to browse the course structure.`;
         }

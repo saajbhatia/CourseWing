@@ -39,6 +39,7 @@ const PUBLIC_CANVAS_STATUS_FIELDS = [
   'baseUrl',
   'lastSyncAt',
   'lastSyncError',
+  'frozenNow',
   'syncing',
   'courseCount',
 ];

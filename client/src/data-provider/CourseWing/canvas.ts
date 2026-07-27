@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import type { CourseWingCourseSummary } from './queries';
 import { clearCourseChatMap } from '~/components/CourseWing/chats';
-import { clearPendingCourse } from '~/components/CourseWing/utils';
+import { clearPendingCourse, setCourseWingFrozenNow } from '~/components/CourseWing/utils';
 
 export type CanvasConnection = {
   enabled?: boolean;
@@ -15,6 +15,7 @@ export type CanvasConnection = {
   baseUrl?: string;
   lastSyncAt?: string | null;
   lastSyncError?: string | null;
+  frozenNow?: string | null;
   syncing?: boolean;
   courseCount?: number;
 };
@@ -42,6 +43,7 @@ function observeCanvasIdentity(connection: CanvasConnection): void {
     clearCanvasClientState();
   }
   observedCanvasAccountKey = nextIdentity;
+  setCourseWingFrozenNow(connection.connected === true ? connection.frozenNow : null);
 }
 
 function removeCanvasScopedQueries(queryClient: QueryClient): void {

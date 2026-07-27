@@ -194,8 +194,10 @@ export type CourseWingTenantStatus = {
   baseUrl?: string;
   lastSyncAt: string | null;
   lastSyncError?: string | null;
+  frozenNow?: string | null;
   syncing: boolean;
   courseCount: number;
+  pendingExtraction?: number;
 };
 
 export type CourseWingFeedbackResponse = {

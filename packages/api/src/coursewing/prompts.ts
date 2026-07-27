@@ -75,16 +75,16 @@ Genuine helpfulness is the point of all of this: every reply should move the stu
 Be transparent about how you work if asked, acknowledge uncertainty plainly, and answer truthfully about what teachers can see of these chats.`,
 ].join('\n');
 
-function formatTodayLine(): string {
-  return `Today's date: ${formatCourseWingDate(getCourseWingNow(), { withYear: true })}.`;
+function formatTodayLine(now?: Date | null): string {
+  return `Today's date: ${formatCourseWingDate(now ?? getCourseWingNow(), { withYear: true })}.`;
 }
 
-export function buildLearningDefault(): string {
-  return `${LEARNING_DEFAULT}\n\n${formatTodayLine()}`;
+export function buildLearningDefault(now?: Date | null): string {
+  return `${LEARNING_DEFAULT}\n\n${formatTodayLine(now)}`;
 }
 
-export function buildAssistancePolicy(level: AssistanceLevel): string {
-  return `${POLICY_PREAMBLE}\n\n${LEVEL_PROMPTS[level]}\n\n${formatTodayLine()}`;
+export function buildAssistancePolicy(level: AssistanceLevel, now?: Date | null): string {
+  return `${POLICY_PREAMBLE}\n\n${LEVEL_PROMPTS[level]}\n\n${formatTodayLine(now)}`;
 }
 
 const PERSONA_PREAMBLE = [
