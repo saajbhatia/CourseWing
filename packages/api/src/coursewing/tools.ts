@@ -63,7 +63,7 @@ export const requiredCourseIdDescription =
   "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result. If you don't have one, call coursewing_get_assignments first (its results include each course's ID). NEVER guess or invent an ID.";
 
 export const assignmentFilterDescription =
-  'Which assignments to return. Defaults to upcoming (soonest first); graded filters before applying the limit; past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.';
+  'Which assignments to return. Defaults to upcoming (soonest first) — except when query is set, which defaults to all so name searches also find undated and past assignments; graded filters before applying the limit; past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.';
 
 const courseIdParam = z.number().int().optional().describe(courseIdDescription);
 
@@ -86,25 +86,64 @@ export type CourseWingToolOptions = {
   userEmail?: string | null;
 };
 
-const SYNC_PENDING_MESSAGE =
-  "This student's Canvas account is still syncing — their courses and assignments aren't fully available yet. Tell the student their Canvas data is still syncing (this usually takes a few minutes after connecting) and to check back shortly. Do NOT guess or invent course information in the meantime.";
+const SYNC_STARTING_MESSAGE =
+  "This student just connected their school account and the very first sync is still running — their classes will appear within a minute. Engage with the student's question RIGHT NOW using general knowledge (explain the concept, offer study help, ask what class it's for) and mention that their classes are loading and will be ready in a moment. Do NOT guess or invent course information, and do NOT just tell them to come back later.";
+
+const SYNC_FAILED_MESSAGE =
+  "This student's school account is connected but could not be synced — the school may not allow access, or a permission was declined while connecting. Tell the student their courses could not be loaded and to try reconnecting from Settings → Account (approving all permissions), or to ask their teacher for help. Do NOT tell them to simply wait, and do NOT guess or invent course information.";
+
+function syncPartialMessage(courseCount: number): string {
+  return (
+    `This student's account is connected and ${courseCount} of their classes have already synced, but the data for this specific request has not landed yet — the first sync usually finishes within a minute or two. ` +
+    'Answer the student RIGHT NOW with what is available: engage the question directly with general knowledge, use the other coursewing tools to reference their real classes where helpful, and mention that this particular piece is still loading so they can ask again in a moment. ' +
+    'Do NOT invent course specifics and do NOT just tell them to wait.'
+  );
+}
+
+/**
+ * File text is extracted in budgeted batches over several sync runs, so search can
+ * miss documents for a while after the course list looks complete. An empty search
+ * with a backlog must not be reported as "does not exist".
+ */
+async function materialsIndexingMessage(
+  tenantId: string | null | undefined,
+  query: string,
+): Promise<string | null> {
+  const status = await getTenantStatusSafe(tenantId);
+  const backlog = status?.pendingExtraction ?? 0;
+  if (backlog <= 0 || status?.frozenNow != null) {
+    return null;
+  }
+  return `No indexed course material matched "${query}" YET — but ${backlog} course files are still being read into the search index, so this document may exist and simply not be searchable yet. Tell the student you can't see it yet (not that it doesn't exist), suggest asking again in ~15 minutes, and offer to work from whatever they can paste or describe in the meantime.`;
+}
 
 /** Empty results on a freshly connected account usually mean the first sync hasn't finished, not that the student has no courses. */
 async function syncPendingMessage(tenantId?: string | null): Promise<string | null> {
   const status = await getTenantStatusSafe(tenantId);
-  if (status != null && (status.syncing || status.lastSyncAt == null)) {
-    return SYNC_PENDING_MESSAGE;
+  if (status == null) {
+    return null;
   }
-  return null;
+  const pending = status.syncing || status.lastSyncAt == null;
+  if (!pending) {
+    return null;
+  }
+  if (!status.syncing && status.lastSyncAt == null && status.lastSyncError) {
+    return SYNC_FAILED_MESSAGE;
+  }
+  return status.courseCount > 0 ? syncPartialMessage(status.courseCount) : SYNC_STARTING_MESSAGE;
 }
 
 function createGetAssignmentsTool(toolOptions: CourseWingToolOptions): DynamicStructuredTool {
   return tool(
     async ({ canvasCourseId, filter, query, dueAfter, dueBefore, withDescriptions, limit }) => {
       try {
+        /* A name search without an explicit filter must cover undated and past
+         * assignments too — defaulting to 'upcoming' made existing assignments
+         * look like they didn't exist. */
+        const effectiveFilter = filter ?? (query?.trim() ? 'all' : undefined);
         const result = await getAssignments({
           canvasCourseId,
-          filter,
+          filter: effectiveFilter,
           query,
           dueAfter,
           dueBefore,
@@ -206,6 +245,10 @@ function createSearchMaterialsTool(toolOptions: CourseWingToolOptions): DynamicS
           const pending = await syncPendingMessage(toolOptions.tenantId);
           if (pending != null) {
             return pending;
+          }
+          const indexing = await materialsIndexingMessage(toolOptions.tenantId, query);
+          if (indexing != null) {
+            return indexing;
           }
           return `No course materials matched "${query}". Try different keywords, or use coursewing_get_modules to browse the course structure.`;
         }

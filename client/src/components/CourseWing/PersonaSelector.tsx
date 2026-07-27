@@ -57,6 +57,7 @@ export default function PersonaSelector() {
 
   const trigger = (
     <Ariakit.MenuButton
+      data-tour="persona"
       aria-label={localize('com_ui_persona')}
       className={cn(
         pillButtonClassName,

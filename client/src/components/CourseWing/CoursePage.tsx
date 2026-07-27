@@ -331,6 +331,7 @@ function CourseView({ course }: { course: CourseWingCourseIdentity & { name: str
               </div>
               <button
                 type="button"
+                data-tour="review"
                 onClick={startReviewChat}
                 className="flex items-center gap-3 rounded-xl border border-border-medium px-3.5 py-2.5 text-left transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
               >

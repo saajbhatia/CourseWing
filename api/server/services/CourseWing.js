@@ -454,6 +454,39 @@ function selectLegacyCanvasTenantId(mappings, conversationCreatedAt) {
   return isValidCourseWingTenantId(active.value) ? active.value : undefined;
 }
 
+const FROZEN_NOW_CACHE_TTL_MS = 5 * 60_000;
+const frozenNowCache = new Map();
+
+/**
+ * The demo tenant carries a frozen clock; the tutor's "Today's date" must match it
+ * or the model asks for date windows the data can't satisfy. Null for real tenants.
+ */
+async function getCourseWingFrozenNow(userId) {
+  try {
+    const tenantId = await getCourseWingTenantId(userId);
+    if (!tenantId) {
+      return null;
+    }
+    const cached = frozenNowCache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+    const { ok, body } = await serviceFetch(`/api/coursewing/tenants/${tenantId}`, {
+      headers: { 'X-Tenant-Id': tenantId },
+    });
+    let value = null;
+    if (ok && typeof body?.frozenNow === 'string') {
+      const parsed = new Date(body.frozenNow);
+      value = Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    frozenNowCache.set(tenantId, { value, expiresAt: Date.now() + FROZEN_NOW_CACHE_TTL_MS });
+    return value;
+  } catch (error) {
+    logger.warn(`[CourseWing] Frozen-clock lookup failed: ${error?.message ?? error}`);
+    return null;
+  }
+}
+
 /** Removes Canvas bearer copies left by older CourseWing builds; tenant ids are retained. */
 async function purgeLegacyCanvasTokens() {
   const PluginAuth = mongoose.models.PluginAuth;
@@ -475,6 +508,7 @@ module.exports = {
   backfillCourseChats,
   purgeLegacyCanvasTokens,
   getCourseWingTenantId,
+  getCourseWingFrozenNow,
   getCourseWingCanvasIdentity,
   clearCourseWingCanvasIdentityCache,
   selectLegacyCanvasTenantId,

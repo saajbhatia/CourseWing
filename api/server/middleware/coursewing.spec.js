@@ -27,6 +27,7 @@ jest.mock('@librechat/api', () => ({
 
 jest.mock('~/server/services/CourseWing', () => ({
   getCourseWingCanvasIdentity: jest.fn(),
+  getCourseWingFrozenNow: jest.fn(async () => null),
 }));
 
 jest.mock('~/models', () => ({

@@ -3,16 +3,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import type { CourseWingCourseSummary } from './queries';
 import { clearCourseChatMap } from '~/components/CourseWing/chats';
-import { clearPendingCourse } from '~/components/CourseWing/utils';
+import { clearPendingCourse, setCourseWingFrozenNow } from '~/components/CourseWing/utils';
 
 export type CanvasConnection = {
   enabled?: boolean;
   connected: boolean;
   isDefault?: boolean;
+  provider?: 'canvas' | 'google';
   canvasAccountKey?: string;
   userName?: string | null;
   baseUrl?: string;
   lastSyncAt?: string | null;
+  lastSyncError?: string | null;
+  frozenNow?: string | null;
   syncing?: boolean;
   courseCount?: number;
 };
@@ -40,6 +43,7 @@ function observeCanvasIdentity(connection: CanvasConnection): void {
     clearCanvasClientState();
   }
   observedCanvasAccountKey = nextIdentity;
+  setCourseWingFrozenNow(connection.connected === true ? connection.frozenNow : null);
 }
 
 function removeCanvasScopedQueries(queryClient: QueryClient): void {
@@ -49,12 +53,15 @@ function removeCanvasScopedQueries(queryClient: QueryClient): void {
   queryClient.removeQueries([QueryKeys.allConversations]);
 }
 
-export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
+export function useCanvasConnectionQuery(options?: {
+  enabled?: boolean;
+}): UseQueryResult<CanvasConnection> {
   const queryClient = useQueryClient();
   return useQuery<CanvasConnection>(
     canvasConnectionQueryKey,
     () => request.get('/api/coursewing/canvas'),
     {
+      enabled: options?.enabled !== false,
       staleTime: 30000,
       retry: 1,
       refetchInterval: (data) => (data?.connected === true && data.syncing === true ? 5000 : false),
@@ -77,6 +84,27 @@ export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
           queryClient.invalidateQueries(currentCoursesQueryKeyPrefix);
         }
       },
+    },
+  );
+}
+
+export type CanvasSchool = {
+  id: number;
+  name: string;
+  domain: string;
+};
+
+/** Searches Instructure's public school directory (proxied server-side) by school name. */
+export function useCanvasSchoolSearchQuery(query: string): UseQueryResult<CanvasSchool[]> {
+  const trimmed = query.trim();
+  return useQuery<CanvasSchool[]>(
+    ['coursewing', 'school-search', trimmed.toLowerCase()],
+    () => request.get(`/api/coursewing/schools?q=${encodeURIComponent(trimmed)}`),
+    {
+      enabled: trimmed.length >= 3,
+      staleTime: 300000,
+      keepPreviousData: true,
+      retry: 1,
     },
   );
 }
@@ -108,6 +136,42 @@ export function useConnectCanvasMutation(): UseMutationResult<
         removeCanvasScopedQueries(queryClient);
         queryClient.invalidateQueries(['coursewing']);
         queryClient.invalidateQueries([QueryKeys.messages]);
+      },
+    },
+  );
+}
+
+/** Attaches the user to the shared frozen demo dataset (skip-onboarding path). */
+export function useDemoModeMutation(): UseMutationResult<CanvasConnection, Error, void> {
+  const queryClient = useQueryClient();
+  return useMutation<CanvasConnection, Error, void>(
+    () => request.post('/api/coursewing/demo', {}),
+    {
+      onSuccess: (data) => {
+        clearCanvasClientState();
+        observedCanvasAccountKey = canvasIdentity(data);
+        queryClient.setQueryData<CanvasConnection>(canvasConnectionQueryKey, data);
+        removeCanvasScopedQueries(queryClient);
+        queryClient.invalidateQueries(['coursewing']);
+        queryClient.invalidateQueries([QueryKeys.messages]);
+      },
+    },
+  );
+}
+
+/** Fetches the Google consent URL and sends the browser there; the OAuth callback returns to the app. */
+export function useConnectGoogleClassroomMutation(): UseMutationResult<
+  { url?: string },
+  Error,
+  void
+> {
+  return useMutation<{ url?: string }, Error, void>(
+    () => request.get('/api/coursewing/google/auth-url'),
+    {
+      onSuccess: (data) => {
+        if (typeof data?.url === 'string' && data.url.startsWith('https://accounts.google.com/')) {
+          window.location.assign(data.url);
+        }
       },
     },
   );

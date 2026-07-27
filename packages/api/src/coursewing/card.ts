@@ -21,9 +21,9 @@ const UNTRUSTED_CANVAS_NOTICE =
 
 export { extractCanvasCourseId, extractCanvasAssignmentId } from 'librechat-data-provider';
 
-export function buildCourseCard(context: CourseWingCourseContext): string {
+export function buildCourseCard(context: CourseWingCourseContext, now?: Date | null): string {
   const { course, hasSyllabus, upcomingAssignments, recentAnnouncements, materialCounts } = context;
-  const today = getCourseWingNow();
+  const today = now ?? getCourseWingNow();
   const lines: string[] = [
     `${COURSEWING_CARD_MARKER} — synced from Canvas, refreshed automatically]`,
     UNTRUSTED_CANVAS_NOTICE,

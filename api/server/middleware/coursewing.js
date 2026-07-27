@@ -17,7 +17,10 @@ const {
   getAssignmentDetailSafe,
   extractCanvasAssignmentId,
 } = require('@librechat/api');
-const { getCourseWingCanvasIdentity } = require('~/server/services/CourseWing');
+const {
+  getCourseWingCanvasIdentity,
+  getCourseWingFrozenNow,
+} = require('~/server/services/CourseWing');
 const {
   isTeacherUser,
   buildCourseRules,
@@ -55,11 +58,16 @@ async function courseWingContext(req, res, next) {
     return res.status(403).json({ message: 'Teacher access required' });
   }
 
+  // Demo tenants live on a frozen clock; the prompt's "today" must match their data.
+  const frozenNow = await getCourseWingFrozenNow(req.user?.id);
+
   const sections = teacherAssistant
     ? [stripCourseWingBlocks(promptPrefix ?? ''), buildTeacherAssistantPrompt()]
     : [
         stripCourseWingBlocks(promptPrefix ?? ''),
-        markedLevel == null ? buildLearningDefault() : buildAssistancePolicy(markedLevel),
+        markedLevel == null
+          ? buildLearningDefault(frozenNow)
+          : buildAssistancePolicy(markedLevel, frozenNow),
       ];
 
   if (!teacherAssistant && persona != null) {
@@ -152,14 +160,14 @@ async function courseWingContext(req, res, next) {
           tenantId: identity.tenantId,
         });
         if (context) {
-          sections.push(buildCourseCard(context));
+          sections.push(buildCourseCard(context, frozenNow));
         }
         sections.push(await buildClassReceiptsCard(canvasCourseId));
       } else {
         const canvasAssignmentId = extractCanvasAssignmentId(promptPrefix);
         const assistance = await getCourseAssistance(canvasCourseId, canvasAssignmentId);
         if (markedLevel == null && assistance.policyLevel != null) {
-          sections[1] = buildAssistancePolicy(assistance.policyLevel);
+          sections[1] = buildAssistancePolicy(assistance.policyLevel, frozenNow);
         }
         const courseRules = buildCourseRules(assistance.blockedRules);
         if (courseRules != null) {
@@ -174,7 +182,7 @@ async function courseWingContext(req, res, next) {
             : Promise.resolve(null),
         ]);
         if (context) {
-          sections.push(buildCourseCard(context));
+          sections.push(buildCourseCard(context, frozenNow));
         }
         if (assignmentDetail) {
           sections.push(buildAssignmentCard(assignmentDetail.assignment));

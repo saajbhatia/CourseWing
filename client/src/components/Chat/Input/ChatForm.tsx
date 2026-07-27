@@ -23,7 +23,6 @@ import {
   useAssistantsMapContext,
 } from '~/Providers';
 import PersonaSelector from '~/components/CourseWing/PersonaSelector';
-import FeedbackButton from '~/components/CourseWing/FeedbackButton';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import { cn, getModelSpec, removeFocusRings } from '~/utils';
 import { useGetStartupConfig } from '~/data-provider';
@@ -379,12 +378,7 @@ const ChatForm = memo(function ChatForm({
                   setFilesLoading={setFilesLoading}
                 />
               </div>
-              {startupConfig?.courseWingEnabled === true && (
-                <>
-                  <PersonaSelector />
-                  {isAuthenticated && <FeedbackButton />}
-                </>
-              )}
+              {startupConfig?.courseWingEnabled === true && <PersonaSelector />}
               <BadgeRow
                 showEphemeralBadges={
                   !!endpoint &&

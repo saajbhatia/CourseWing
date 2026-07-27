@@ -440,6 +440,30 @@ describe('coursewing tools', () => {
     );
   });
 
+  it('defaults a name search to the all filter so undated assignments are found', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [{ name: 'A Day with Arabic' }] } },
+    ]);
+
+    await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({ query: 'A Day with Arabic' });
+
+    const [url] = jest.mocked(global.fetch).mock.calls[0];
+    expect(String(url)).toContain('filter=all');
+  });
+
+  it('keeps an explicit filter even when a name query is present', async () => {
+    mockFetchByUrl([{ match: '/assignments', payload: { assignments: [{ name: 'RT-U3' }] } }]);
+
+    await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({ query: 'RT', filter: 'graded' });
+
+    const [url] = jest.mocked(global.fetch).mock.calls[0];
+    expect(String(url)).toContain('filter=graded');
+  });
+
   it('reports sync-in-progress instead of an empty assignment list while the tenant syncs', async () => {
     mockFetchByUrl([
       { match: '/assignments', payload: { assignments: [] } },
@@ -453,8 +477,50 @@ describe('coursewing tools', () => {
       tenantId: 'tenant-1',
     }).invoke({});
 
-    expect(result).toContain('still syncing');
+    expect(result).toContain('first sync is still running');
     expect(result).toContain('Do NOT guess');
+  });
+
+  it('tells the model to answer from partial data when some classes have synced', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: { tenantId: 'tenant-1', syncing: true, lastSyncAt: null, courseCount: 5 },
+      },
+    ]);
+
+    const result = await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(result).toContain('5 of their classes have already synced');
+    expect(result).toContain('Answer the student RIGHT NOW');
+    expect(result).not.toContain('come back');
+  });
+
+  it('reports a failed connection instead of endless syncing when the first sync errored', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: {
+          tenantId: 'tenant-1',
+          syncing: false,
+          lastSyncAt: null,
+          lastSyncError: 'Google request failed (403 Forbidden) for /v1/courses',
+          courseCount: 0,
+        },
+      },
+    ]);
+
+    const result = await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(result).toContain('could not be synced');
+    expect(result).not.toContain('still syncing');
+    expect(result).toContain('Do NOT tell them to simply wait');
   });
 
   it('returns the empty assignment list unchanged once the tenant has synced', async () => {
@@ -519,6 +585,6 @@ describe('coursewing tools', () => {
       tenantId: 'tenant-1',
     }).invoke({ query: 'entropy' });
 
-    expect(result).toContain('still syncing');
+    expect(result).toContain('first sync is still running');
   });
 });
