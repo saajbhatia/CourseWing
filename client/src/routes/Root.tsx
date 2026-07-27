@@ -18,7 +18,7 @@ import {
 } from '~/hooks';
 import KeyboardShortcutsDialog from '~/components/Nav/KeyboardShortcutsDialog';
 import KeyboardDeleteDialog from '~/components/Nav/KeyboardDeleteDialog';
-import { useOnboardingGate } from '~/components/Onboarding';
+import { useOnboardingGate, OnboardingTour } from '~/components/Onboarding';
 import { useUserTermsQuery, useGetStartupConfig } from '~/data-provider';
 import useKeyboardShortcuts from '~/hooks/useKeyboardShortcuts';
 import { UnifiedSidebar } from '~/components/UnifiedSidebar';
@@ -115,6 +115,7 @@ export default function Root() {
             />
           )}
           <KeyboardShortcutsProvider />
+          <OnboardingTour />
         </AssistantsMapContext.Provider>
       </FileMapContext.Provider>
     </SetConvoProvider>

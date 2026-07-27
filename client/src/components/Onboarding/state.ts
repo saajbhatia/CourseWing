@@ -21,3 +21,21 @@ export function markOnboarded(userId?: string | null): void {
     /* storage unavailable — the gate treats that as onboarded */
   }
 }
+
+const TOUR_KEY_PREFIX = 'coursewing:tour';
+
+export function hasToured(userId?: string | null): boolean {
+  try {
+    return localStorage.getItem(`${TOUR_KEY_PREFIX}:${userId ?? ''}`) === 'true';
+  } catch {
+    return true;
+  }
+}
+
+export function markToured(userId?: string | null): void {
+  try {
+    localStorage.setItem(`${TOUR_KEY_PREFIX}:${userId ?? ''}`, 'true');
+  } catch {
+    /* storage unavailable — the tour just won't show */
+  }
+}

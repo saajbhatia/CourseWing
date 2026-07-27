@@ -112,7 +112,10 @@ function CoursesSection({ toggleNav }: CoursesSectionProps) {
   }
 
   return (
-    <div className="flex shrink-0 flex-col border-t border-border-light px-3 pb-2 pt-1 text-sm">
+    <div
+      data-tour="courses"
+      className="flex shrink-0 flex-col border-t border-border-light px-3 pb-2 pt-1 text-sm"
+    >
       <div className="flex h-8 w-full items-center gap-0.5 pr-2">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
