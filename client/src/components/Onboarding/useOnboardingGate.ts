@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCanvasConnectionQuery } from '~/data-provider/CourseWing';
-import { hasOnboarded, markOnboarded } from './state';
+import { hasOnboarded } from './state';
 import { useAuthContext } from '~/hooks';
 
 /**
- * Sends first-run students into /onboarding: new users who have never connected an
- * LMS see the wizard, and OAuth callback outcomes (?classroom=...) land in the wizard's
- * sync step instead of a bare chat. Users who are already connected are marked as
- * onboarded so a later disconnect never traps them back in the wizard.
+ * Sends students into /onboarding until they have completed it once (per user, per
+ * browser): connected users breeze through welcome → "you're all set", everyone else
+ * lands on the connect step. OAuth callback outcomes (?classroom=...) land in the
+ * wizard's sync step instead of a bare chat.
  */
 export default function useOnboardingGate(): void {
   const navigate = useNavigate();
@@ -29,10 +29,6 @@ export default function useOnboardingGate(): void {
       return;
     }
     if (data == null || data.enabled === false) {
-      return;
-    }
-    if (data.connected === true) {
-      markOnboarded(userId);
       return;
     }
     if (!hasOnboarded(userId)) {

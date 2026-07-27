@@ -2033,6 +2033,7 @@
   "com_ui_onboarding_value_receipts_desc": "Your teachers can see receipts of how you used it, so honest work gets full credit.",
   "com_ui_onboarding_get_started": "Get started",
   "com_ui_onboarding_skip": "Skip for now (use demo data)",
+  "com_ui_onboarding_skip_plain": "Skip for now",
   "com_ui_onboarding_connect_title": "Connect your classes",
   "com_ui_onboarding_connect_subtitle": "Pick the app your school uses to post work.",
   "com_ui_onboarding_google_desc": "One click — sign in with the Google account you use for school.",

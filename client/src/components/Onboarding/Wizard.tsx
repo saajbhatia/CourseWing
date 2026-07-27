@@ -216,8 +216,14 @@ export default function Wizard() {
     );
   };
 
+  const alreadyConnected = data?.connected === true;
+
   /** Skip still shows a fully-populated product: attach the shared demo dataset, fall back to a bare skip. */
   const handleSkip = () => {
+    if (alreadyConnected) {
+      finish();
+      return;
+    }
     if (demoMutation.isLoading) {
       return;
     }
@@ -238,7 +244,9 @@ export default function Wizard() {
       className="mt-6 flex items-center gap-2 text-sm text-text-secondary underline-offset-4 hover:text-text-primary hover:underline disabled:opacity-60"
     >
       {demoMutation.isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-      {localize('com_ui_onboarding_skip')}
+      {alreadyConnected
+        ? localize('com_ui_onboarding_skip_plain')
+        : localize('com_ui_onboarding_skip')}
     </button>
   );
 
@@ -267,7 +275,10 @@ export default function Wizard() {
           description={localize('com_ui_onboarding_value_receipts_desc')}
         />
       </div>
-      <Button className="mt-8 w-full" onClick={() => setStep('connect')}>
+      <Button
+        className="mt-8 w-full"
+        onClick={() => setStep(alreadyConnected ? 'sync' : 'connect')}
+      >
         {localize('com_ui_onboarding_get_started')}
       </Button>
       {skipLink}
