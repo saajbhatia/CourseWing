@@ -244,9 +244,7 @@ export default function Wizard() {
       className="mt-6 flex items-center gap-2 text-sm text-text-secondary underline-offset-4 hover:text-text-primary hover:underline disabled:opacity-60"
     >
       {demoMutation.isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-      {alreadyConnected
-        ? localize('com_ui_onboarding_skip_plain')
-        : localize('com_ui_onboarding_skip')}
+      {localize('com_ui_onboarding_skip')}
     </button>
   );
 
