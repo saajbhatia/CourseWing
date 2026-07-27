@@ -35,6 +35,11 @@ export interface DeleteMemoryParams {
 
 export interface GetFormattedMemoriesParams {
   userId: string | Types.ObjectId;
+  /**
+   * Optional trusted clock ceiling for rendered timestamps. Frozen demo tenants
+   * pass their per-tenant instant here so memories cannot reveal the host clock.
+   */
+  displayDateCeiling?: Date | string | null;
 }
 
 // Result interfaces

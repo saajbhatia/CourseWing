@@ -9,17 +9,14 @@ const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
-/**
- * Demo/testing override (`COURSEWING_FAKE_NOW`): memory timestamps shown to the model
- * are capped at the fake "now" so they can't reveal the real date.
- */
-const displayDate = (date: Date): Date => {
-  const fakeNowMs = Date.parse(process.env.COURSEWING_FAKE_NOW ?? '');
-  if (Number.isNaN(fakeNowMs) || date.getTime() <= fakeNowMs) {
+/** Caps a rendered memory date at a trusted, request-specific clock ceiling. */
+const displayDate = (date: Date, ceiling?: Date | string | null): Date => {
+  const ceilingMs = ceiling instanceof Date ? ceiling.getTime() : Date.parse(ceiling ?? '');
+  if (Number.isNaN(ceilingMs) || date.getTime() <= ceilingMs) {
     return date;
   }
 
-  return new Date(fakeNowMs);
+  return new Date(ceilingMs);
 };
 
 // Factory function that takes mongoose instance and returns the methods
@@ -142,6 +139,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
    */
   async function getFormattedMemories({
     userId,
+    displayDateCeiling,
   }: t.GetFormattedMemoriesParams): Promise<t.FormattedMemoriesResult> {
     try {
       const memories = await getAllUserMemories(userId);
@@ -160,7 +158,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
 
       const withKeys = sortedMemories
         .map((memory, index) => {
-          const date = formatDate(displayDate(new Date(memory.updated_at!)));
+          const date = formatDate(displayDate(new Date(memory.updated_at!), displayDateCeiling));
           const tokenInfo = memory.tokenCount ? ` [${memory.tokenCount} tokens]` : '';
           return `${index + 1}. [${date}]. ["key": "${memory.key}"]${tokenInfo}. ["value": "${memory.value}"]`;
         })
@@ -168,7 +166,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')): {
 
       const withoutKeys = sortedMemories
         .map((memory, index) => {
-          const date = formatDate(displayDate(new Date(memory.updated_at!)));
+          const date = formatDate(displayDate(new Date(memory.updated_at!), displayDateCeiling));
           return `${index + 1}. [${date}]. ${memory.value}`;
         })
         .join('\n\n');

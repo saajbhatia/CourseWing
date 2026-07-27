@@ -2769,6 +2769,30 @@ describe('AgentClient - titleConvo', () => {
       expect(client.processMemory).toBeUndefined();
     });
 
+    it('should forward a CourseWing tenant clock when loading memories', async () => {
+      mockReq.config.memory = {
+        personalize: true,
+      };
+      mockReq.courseWingFrozenNow = '2026-07-15T12:00:00.000Z';
+      mockCheckAccess.mockResolvedValue(true);
+      mockGetFormattedMemories.mockResolvedValue({
+        withKeys: 'food: likes pasta',
+        withoutKeys: 'likes pasta',
+        totalTokens: 3,
+      });
+
+      client = new AgentClient(mockOptions);
+      client.conversationId = 'convo-123';
+      client.responseMessageId = 'response-123';
+
+      await client.useMemory();
+
+      expect(mockGetFormattedMemories).toHaveBeenCalledWith({
+        userId: 'user-123',
+        displayDateCeiling: '2026-07-15T12:00:00.000Z',
+      });
+    });
+
     it('should not initialize auto-processing when no memories exist', async () => {
       mockReq.config.memory = {
         personalize: true,

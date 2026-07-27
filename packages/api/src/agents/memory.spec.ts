@@ -727,4 +727,18 @@ describe('getRequestMemories caching', () => {
     await getRequestMemories({ req, userId: 'user-1', getFormattedMemories });
     expect(getFormattedMemories).toHaveBeenCalledTimes(2);
   });
+
+  it('forwards a trusted per-request date ceiling', async () => {
+    const getFormattedMemories = jest
+      .fn()
+      .mockResolvedValue({ withKeys: '', withoutKeys: '', totalTokens: 0 });
+    const req = { courseWingFrozenNow: '2026-07-15T12:00:00.000Z' };
+
+    await getRequestMemories({ req, userId: 'user-1', getFormattedMemories });
+
+    expect(getFormattedMemories).toHaveBeenCalledWith({
+      userId: 'user-1',
+      displayDateCeiling: '2026-07-15T12:00:00.000Z',
+    });
+  });
 });

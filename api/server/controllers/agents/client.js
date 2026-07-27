@@ -790,6 +790,7 @@ class AgentClient extends BaseClient {
       },
       res: this.options.res,
       user: createSafeUser(this.options.req.user),
+      displayDateCeiling: this.options.req.courseWingFrozenNow,
     });
 
     this.processMemory = processMemory;

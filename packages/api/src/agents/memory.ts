@@ -498,13 +498,18 @@ export function getRequestMemories({
   userId,
   getFormattedMemories,
 }: {
-  req: object;
+  req: object & { courseWingFrozenNow?: string | null };
   userId: string | ObjectId;
   getFormattedMemories: MemoryMethods['getFormattedMemories'];
 }): Promise<FormattedMemoriesResult> {
   let cached = requestMemoriesCache.get(req);
   if (!cached) {
-    cached = getFormattedMemories({ userId });
+    const displayDateCeiling =
+      typeof req.courseWingFrozenNow === 'string' ? req.courseWingFrozenNow : null;
+    cached = getFormattedMemories({
+      userId,
+      ...(displayDateCeiling ? { displayDateCeiling } : {}),
+    });
     requestMemoriesCache.set(req, cached);
   }
   return cached;
@@ -906,6 +911,7 @@ export async function createMemoryProcessor({
   config = {},
   streamId = null,
   user,
+  displayDateCeiling,
 }: {
   res: ServerResponse;
   messageId: string;
@@ -915,12 +921,14 @@ export async function createMemoryProcessor({
   config?: MemoryConfig;
   streamId?: string | null;
   user?: IUser;
+  displayDateCeiling?: Date | string | null;
 }): Promise<[string, (messages: BaseMessage[]) => Promise<(TAttachment | null)[] | undefined>]> {
   const { validKeys, instructions, llmConfig, tokenLimit } = config;
   const finalInstructions = instructions || getDefaultInstructions(validKeys, tokenLimit);
 
   const { withKeys, withoutKeys, totalTokens } = await memoryMethods.getFormattedMemories({
     userId,
+    ...(displayDateCeiling ? { displayDateCeiling } : {}),
   });
 
   return [
