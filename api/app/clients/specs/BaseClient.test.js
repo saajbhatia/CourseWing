@@ -973,7 +973,7 @@ describe('BaseClient', () => {
       saveConvo.mockReset();
     });
 
-    test('saveMessageToDatabase reuses conversation resolved on the request', async () => {
+    test('saveMessageToDatabase reuses the resolved conversation and forwards trusted Canvas scope', async () => {
       const existingConvo = {
         conversationId: 'cached-convo-id',
         endpoint: 'openai',
@@ -985,6 +985,7 @@ describe('BaseClient', () => {
         user,
         resolvedConversation: existingConvo,
         courseWingCanvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        courseWingCanvasCourseKey: 'c'.repeat(64),
       };
 
       getConvo.mockClear();
@@ -1012,6 +1013,7 @@ describe('BaseClient', () => {
         expect.objectContaining({ conversationId: existingConvo.conversationId }),
         expect.objectContaining({
           canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+          canvasCourseKey: 'c'.repeat(64),
           unsetFields: expect.objectContaining({ temperature: 1 }),
         }),
       );

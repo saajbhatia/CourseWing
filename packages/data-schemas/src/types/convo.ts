@@ -47,6 +47,7 @@ export interface IConversation extends Document {
   chatProjectId?: string | null;
   canvasCourseId?: number | null;
   canvasAccountKey?: string | null;
+  canvasCourseKey?: string | null;
   tools?: string[];
   maxContextTokens?: number;
   max_tokens?: number;

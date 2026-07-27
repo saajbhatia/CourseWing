@@ -72,6 +72,11 @@ const saveConvo = (...args: Parameters<ConversationMethods['saveConvo']>) =>
   methods.saveConvo(...args) as Promise<IConversation | null>;
 const getConvo = (...args: Parameters<ConversationMethods['getConvo']>) =>
   methods.getConvo(...args);
+const getConvoCanvasScope = (...args: Parameters<ConversationMethods['getConvoCanvasScope']>) =>
+  methods.getConvoCanvasScope(...args);
+const bindConvoCanvasCourseKey = (
+  ...args: Parameters<ConversationMethods['bindConvoCanvasCourseKey']>
+) => methods.bindConvoCanvasCourseKey(...args);
 const copyConvoCanvasScope = (...args: Parameters<ConversationMethods['copyConvoCanvasScope']>) =>
   methods.copyConvoCanvasScope(...args);
 const getConvoRetention = (...args: Parameters<ConversationMethods['getConvoRetention']>) =>
@@ -392,9 +397,11 @@ describe('Conversation Operations', () => {
       expect(secondSave?.title).toBe('Updated title');
     });
 
-    it('derives Canvas scope only on insert and keeps both scope fields immutable', async () => {
+    it('derives hidden Canvas scope only on insert and keeps all scope fields immutable', async () => {
       const firstAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
       const secondAccountKey = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+      const firstCourseKey = 'c'.repeat(64);
+      const secondCourseKey = 'd'.repeat(64);
 
       await saveConvo(
         mockCtx,
@@ -403,18 +410,27 @@ describe('Conversation Operations', () => {
           promptPrefix: 'Canvas course ID: 42',
           canvasCourseId: 999,
           canvasAccountKey: secondAccountKey,
+          canvasCourseKey: secondCourseKey,
         },
-        { canvasAccountKey: firstAccountKey },
+        { canvasAccountKey: firstAccountKey, canvasCourseKey: firstCourseKey },
       );
+
+      const publicConversation = await Conversation.findOne({
+        conversationId: mockConversationData.conversationId,
+        user: mockCtx.userId,
+      }).lean<IConversation>();
+      expect(publicConversation?.canvasAccountKey).toBeUndefined();
+      expect(publicConversation?.canvasCourseKey).toBeUndefined();
 
       let persisted = await Conversation.findOne({
         conversationId: mockConversationData.conversationId,
         user: mockCtx.userId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(persisted?.canvasCourseId).toBe(42);
       expect(persisted?.canvasAccountKey).toBe(firstAccountKey);
+      expect(persisted?.canvasCourseKey).toBe(firstCourseKey);
 
       await saveConvo(
         mockCtx,
@@ -423,10 +439,12 @@ describe('Conversation Operations', () => {
           promptPrefix: 'Canvas course ID: 99',
           canvasCourseId: 99,
           canvasAccountKey: secondAccountKey,
+          canvasCourseKey: secondCourseKey,
         },
         {
           canvasAccountKey: secondAccountKey,
-          unsetFields: { canvasCourseId: 1, canvasAccountKey: 1 },
+          canvasCourseKey: secondCourseKey,
+          unsetFields: { canvasCourseId: 1, canvasAccountKey: 1, canvasCourseKey: 1 },
         },
       );
 
@@ -434,10 +452,11 @@ describe('Conversation Operations', () => {
         conversationId: mockConversationData.conversationId,
         user: mockCtx.userId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(persisted?.canvasCourseId).toBe(42);
       expect(persisted?.canvasAccountKey).toBe(firstAccountKey);
+      expect(persisted?.canvasCourseKey).toBe(firstCourseKey);
     });
   });
 
@@ -920,11 +939,83 @@ describe('Conversation Operations', () => {
     });
   });
 
+  describe('bindConvoCanvasCourseKey', () => {
+    it('lazily binds only when the legacy account and numeric course both match', async () => {
+      const conversationId = uuidv4();
+      const canvasAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+      const canvasCourseKey = 'c'.repeat(64);
+      await Conversation.create({
+        conversationId,
+        user: mockCtx.userId,
+        endpoint: EModelEndpoint.openAI,
+        canvasCourseId: 42,
+        canvasAccountKey,
+      });
+
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          conversationId,
+          99,
+          canvasAccountKey,
+          canvasCourseKey,
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          conversationId,
+          42,
+          'bbbbbbbbbbbbbbbbbbbbbbbb',
+          canvasCourseKey,
+        ),
+      ).resolves.toBe(false);
+      await expect(getConvoCanvasScope(mockCtx.userId, conversationId)).resolves.toEqual({
+        canvasAccountKey,
+        canvasCourseKey: null,
+      });
+
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          conversationId,
+          42,
+          canvasAccountKey,
+          canvasCourseKey,
+        ),
+      ).resolves.toBe(true);
+      await expect(getConvoCanvasScope(mockCtx.userId, conversationId)).resolves.toEqual({
+        canvasAccountKey,
+        canvasCourseKey,
+      });
+
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          conversationId,
+          42,
+          canvasAccountKey,
+          canvasCourseKey,
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          conversationId,
+          42,
+          canvasAccountKey,
+          'd'.repeat(64),
+        ),
+      ).resolves.toBe(false);
+    });
+  });
+
   describe('copyConvoCanvasScope', () => {
     it('copies complete immutable scope to a fresh same-user target and cannot overwrite it', async () => {
       const sourceConversationId = uuidv4();
       const targetConversationId = uuidv4();
       const canvasAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+      const canvasCourseKey = 'c'.repeat(64);
 
       await saveConvo(
         mockCtx,
@@ -933,7 +1024,7 @@ describe('Conversation Operations', () => {
           endpoint: EModelEndpoint.openAI,
           promptPrefix: 'Canvas course ID: 42',
         },
-        { canvasAccountKey },
+        { canvasAccountKey, canvasCourseKey },
       );
       await methods.bulkSaveConvos([
         {
@@ -942,6 +1033,7 @@ describe('Conversation Operations', () => {
           endpoint: EModelEndpoint.openAI,
           canvasCourseId: 999,
           canvasAccountKey: 'bbbbbbbbbbbbbbbbbbbbbbbb',
+          canvasCourseKey: 'd'.repeat(64),
         },
       ]);
 
@@ -949,10 +1041,11 @@ describe('Conversation Operations', () => {
         user: mockCtx.userId,
         conversationId: targetConversationId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(beforeCopy?.canvasCourseId).toBeUndefined();
       expect(beforeCopy?.canvasAccountKey).toBeUndefined();
+      expect(beforeCopy?.canvasCourseKey).toBeUndefined();
 
       await expect(
         copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
@@ -962,13 +1055,58 @@ describe('Conversation Operations', () => {
         user: mockCtx.userId,
         conversationId: targetConversationId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(copied?.canvasCourseId).toBe(42);
       expect(copied?.canvasAccountKey).toBe(canvasAccountKey);
+      expect(copied?.canvasCourseKey).toBe(canvasCourseKey);
       await expect(
         copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
       ).rejects.toThrow('fresh unscoped conversation');
+    });
+
+    it('copies a legacy account/course binding so the clone can be lazily upgraded', async () => {
+      const sourceConversationId = uuidv4();
+      const targetConversationId = uuidv4();
+      const canvasAccountKey = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+      const canvasCourseKey = 'c'.repeat(64);
+      await Conversation.create({
+        conversationId: sourceConversationId,
+        user: mockCtx.userId,
+        endpoint: EModelEndpoint.openAI,
+        promptPrefix: 'Canvas course ID: 42',
+        canvasCourseId: 42,
+        canvasAccountKey,
+      });
+      await methods.bulkSaveConvos([
+        {
+          conversationId: targetConversationId,
+          user: mockCtx.userId,
+          endpoint: EModelEndpoint.openAI,
+          promptPrefix: 'Canvas course ID: 42',
+        },
+      ]);
+
+      await expect(
+        copyConvoCanvasScope(mockCtx.userId, sourceConversationId, targetConversationId),
+      ).resolves.toBe(true);
+      await expect(getConvoCanvasScope(mockCtx.userId, targetConversationId)).resolves.toEqual({
+        canvasAccountKey,
+        canvasCourseKey: null,
+      });
+      await expect(
+        bindConvoCanvasCourseKey(
+          mockCtx.userId,
+          targetConversationId,
+          42,
+          canvasAccountKey,
+          canvasCourseKey,
+        ),
+      ).resolves.toBe(true);
+      await expect(getConvoCanvasScope(mockCtx.userId, targetConversationId)).resolves.toEqual({
+        canvasAccountKey,
+        canvasCourseKey,
+      });
     });
 
     it('does not read a source or write a target outside the supplied user scope', async () => {
@@ -985,7 +1123,10 @@ describe('Conversation Operations', () => {
           endpoint: EModelEndpoint.openAI,
           promptPrefix: 'Canvas course ID: 77',
         },
-        { canvasAccountKey: 'cccccccccccccccccccccccc' },
+        {
+          canvasAccountKey: 'cccccccccccccccccccccccc',
+          canvasCourseKey: 'e'.repeat(64),
+        },
       );
       await methods.bulkSaveConvos([
         {
@@ -1002,10 +1143,11 @@ describe('Conversation Operations', () => {
         user: mockCtx.userId,
         conversationId: targetConversationId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(target?.canvasCourseId).toBeUndefined();
       expect(target?.canvasAccountKey).toBeUndefined();
+      expect(target?.canvasCourseKey).toBeUndefined();
 
       await saveConvo(
         mockCtx,
@@ -1014,7 +1156,10 @@ describe('Conversation Operations', () => {
           endpoint: EModelEndpoint.openAI,
           promptPrefix: 'Canvas course ID: 88',
         },
-        { canvasAccountKey: 'dddddddddddddddddddddddd' },
+        {
+          canvasAccountKey: 'dddddddddddddddddddddddd',
+          canvasCourseKey: 'f'.repeat(64),
+        },
       );
       await methods.bulkSaveConvos([
         {
@@ -1031,10 +1176,11 @@ describe('Conversation Operations', () => {
         user: otherUser,
         conversationId: otherTargetConversationId,
       })
-        .select('+canvasAccountKey')
+        .select('+canvasAccountKey +canvasCourseKey')
         .lean<IConversation>();
       expect(otherTarget?.canvasCourseId).toBeUndefined();
       expect(otherTarget?.canvasAccountKey).toBeUndefined();
+      expect(otherTarget?.canvasCourseKey).toBeUndefined();
     });
   });
 
@@ -1696,7 +1842,7 @@ describe('Conversation Operations', () => {
       expect(doc?.tenantId).toBe('real-tenant');
     });
 
-    it('bulkSaveConvos should not inject either internal Canvas scope field', async () => {
+    it('bulkSaveConvos should strip every caller-supplied internal Canvas scope field', async () => {
       const conversationId = uuidv4();
 
       await methods.bulkSaveConvos([
@@ -1707,13 +1853,17 @@ describe('Conversation Operations', () => {
           endpoint: EModelEndpoint.openAI,
           canvasCourseId: 42,
           canvasAccountKey: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+          canvasCourseKey: 'c'.repeat(64),
         },
       ]);
 
-      const doc = await Conversation.findOne({ conversationId }).select('+canvasAccountKey').lean();
+      const doc = await Conversation.findOne({ conversationId })
+        .select('+canvasAccountKey +canvasCourseKey')
+        .lean();
       expect(doc).not.toBeNull();
       expect(doc?.canvasCourseId).toBeUndefined();
       expect(doc?.canvasAccountKey).toBeUndefined();
+      expect(doc?.canvasCourseKey).toBeUndefined();
     });
 
     it('bulkSaveConvos refreshes stats for cloned project conversations', async () => {

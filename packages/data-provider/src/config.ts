@@ -69,6 +69,7 @@ export const excludedKeys = new Set([
   'chatProjectId',
   'canvasCourseId',
   'canvasAccountKey',
+  'canvasCourseKey',
 ]);
 
 export enum SettingsViews {

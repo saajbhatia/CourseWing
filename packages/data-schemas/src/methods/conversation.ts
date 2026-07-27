@@ -14,6 +14,9 @@ import { isValidObjectIdString } from '~/utils/objectId';
 import { decrementTagCounts } from './conversationTag';
 import logger from '~/config/winston';
 
+const CANVAS_ACCOUNT_KEY_PATTERN = /^[a-f\d]{24}$/;
+const CANVAS_COURSE_KEY_PATTERN = /^[a-f\d]{64}$/;
+
 export interface ConversationMethods {
   getConvoFiles(conversationId: string): Promise<string[]>;
   searchConversation(conversationId: string): Promise<IConversation | null>;
@@ -30,6 +33,7 @@ export interface ConversationMethods {
       noUpsert?: boolean;
       createdAtOnInsert?: Date;
       canvasAccountKey?: string;
+      canvasCourseKey?: string;
     },
   ): Promise<IConversation | { message: string } | null>;
   bulkSaveConvos(conversations: Array<Record<string, unknown>>): Promise<unknown>;
@@ -60,6 +64,17 @@ export interface ConversationMethods {
   }>;
   getConvo(user: string, conversationId: string): Promise<IConversation | null>;
   getConvoCanvasAccountKey(user: string, conversationId: string): Promise<string | null>;
+  getConvoCanvasScope(
+    user: string,
+    conversationId: string,
+  ): Promise<{ canvasAccountKey: string | null; canvasCourseKey: string | null } | null>;
+  bindConvoCanvasCourseKey(
+    user: string,
+    conversationId: string,
+    canvasCourseId: number,
+    canvasAccountKey: string,
+    canvasCourseKey: string,
+  ): Promise<boolean>;
   copyConvoCanvasScope(
     user: string,
     sourceConversationId: string,
@@ -134,11 +149,81 @@ export function createConversationMethods(
     }
   }
 
+  /** Reads both hidden Canvas bindings for server-side course-scope verification. */
+  async function getConvoCanvasScope(user: string, conversationId: string) {
+    try {
+      const Conversation = mongoose.models.Conversation as Model<IConversation>;
+      const conversation = await Conversation.findOne({ user, conversationId })
+        .select('+canvasAccountKey +canvasCourseKey')
+        .lean<Pick<IConversation, 'canvasAccountKey' | 'canvasCourseKey'> | null>();
+      if (!conversation) {
+        return null;
+      }
+      return {
+        canvasAccountKey: conversation.canvasAccountKey ?? null,
+        canvasCourseKey: conversation.canvasCourseKey ?? null,
+      };
+    } catch (error) {
+      logger.error('[getConvoCanvasScope] Error getting Canvas conversation scope', error);
+      throw new Error('Error getting Canvas conversation scope');
+    }
+  }
+
   /**
-   * Copies the complete immutable Canvas scope between two conversations owned by
-   * the same user. This is intentionally narrower than saveConvo/bulkSaveConvos:
-   * trusted same-user clone flows call it only after inserting a fresh, unscoped
-   * target. Existing scope can never be overwritten or partially filled.
+   * Safely adopts the service-issued shared course key for a legacy conversation
+   * whose per-user account and course bindings already match this request.
+   */
+  async function bindConvoCanvasCourseKey(
+    user: string,
+    conversationId: string,
+    canvasCourseId: number,
+    canvasAccountKey: string,
+    canvasCourseKey: string,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(canvasCourseId) ||
+      canvasCourseId <= 0 ||
+      !CANVAS_ACCOUNT_KEY_PATTERN.test(canvasAccountKey) ||
+      !CANVAS_COURSE_KEY_PATTERN.test(canvasCourseKey)
+    ) {
+      return false;
+    }
+    try {
+      const Conversation = mongoose.models.Conversation as Model<IConversation>;
+      const result = await Conversation.updateOne(
+        {
+          user,
+          conversationId,
+          canvasCourseId,
+          canvasAccountKey,
+          $or: [{ canvasCourseKey: { $exists: false } }, { canvasCourseKey: null }],
+        },
+        { $set: { canvasCourseKey } },
+      );
+      if (result.modifiedCount === 1) {
+        return true;
+      }
+      const existing = await Conversation.findOne({
+        user,
+        conversationId,
+        canvasCourseId,
+        canvasAccountKey,
+      })
+        .select('+canvasCourseKey')
+        .lean<Pick<IConversation, 'canvasCourseKey'> | null>();
+      return existing?.canvasCourseKey === canvasCourseKey;
+    } catch (error) {
+      logger.error('[bindConvoCanvasCourseKey] Error binding Canvas course scope', error);
+      throw new Error('Error binding Canvas course scope');
+    }
+  }
+
+  /**
+   * Copies immutable Canvas scope between two conversations owned by the same
+   * user. Legacy sources may not have the newer shared course key; copying their
+   * verified account/course pair keeps the clone usable so middleware can safely
+   * lazy-bind the shared key on its first turn. Existing target scope is never
+   * overwritten or partially filled.
    */
   async function copyConvoCanvasScope(
     user: string,
@@ -149,17 +234,28 @@ export function createConversationMethods(
       const Conversation = mongoose.models.Conversation as Model<IConversation>;
       const source = await Conversation.findOne(
         { user, conversationId: sourceConversationId },
-        'canvasCourseId +canvasAccountKey',
-      ).lean<Pick<IConversation, 'canvasCourseId' | 'canvasAccountKey'> | null>();
+        'canvasCourseId +canvasAccountKey +canvasCourseKey',
+      ).lean<Pick<
+        IConversation,
+        'canvasCourseId' | 'canvasAccountKey' | 'canvasCourseKey'
+      > | null>();
       const canvasCourseId = source?.canvasCourseId;
       const canvasAccountKey = source?.canvasAccountKey;
+      const canvasCourseKey = source?.canvasCourseKey;
       if (
         !Number.isSafeInteger(canvasCourseId) ||
         Number(canvasCourseId) <= 0 ||
-        typeof canvasAccountKey !== 'string'
+        typeof canvasAccountKey !== 'string' ||
+        !CANVAS_ACCOUNT_KEY_PATTERN.test(canvasAccountKey) ||
+        (canvasCourseKey != null && !CANVAS_COURSE_KEY_PATTERN.test(canvasCourseKey))
       ) {
         return false;
       }
+      const canvasScope = {
+        canvasCourseId,
+        canvasAccountKey,
+        ...(canvasCourseKey != null ? { canvasCourseKey } : {}),
+      };
 
       const result = await Conversation.updateOne(
         {
@@ -167,8 +263,9 @@ export function createConversationMethods(
           conversationId: targetConversationId,
           canvasCourseId: { $exists: false },
           canvasAccountKey: { $exists: false },
+          canvasCourseKey: { $exists: false },
         },
-        { $set: { canvasCourseId, canvasAccountKey } },
+        { $set: canvasScope },
       );
       if (result.matchedCount !== 1 || result.modifiedCount !== 1) {
         throw new Error('Canvas scope target is missing or is not a fresh unscoped conversation');
@@ -273,6 +370,7 @@ export function createConversationMethods(
       noUpsert?: boolean;
       createdAtOnInsert?: Date;
       canvasAccountKey?: string;
+      canvasCourseKey?: string;
     },
   ) {
     try {
@@ -287,15 +385,17 @@ export function createConversationMethods(
       const update: Record<string, unknown> = { ...convo, messages, user: userId };
       const requestedCanvasCourseId =
         typeof update.promptPrefix === 'string' ? extractCanvasCourseId(update.promptPrefix) : null;
-      // Both Canvas scope fields are internal and immutable after insert. The
+      // Canvas scope fields are internal and immutable after insert. The
       // public conversation payload can supply neither field directly; the
-      // course id is derived from the canonical marker and the account key only
-      // arrives through trusted server metadata.
+      // course id is derived from the canonical marker and both keys only
+      // arrive through trusted server metadata.
       delete update.canvasCourseId;
       delete update.canvasAccountKey;
+      delete update.canvasCourseKey;
       const unsetFields: Record<string, number> = { ...(metadata?.unsetFields ?? {}) };
       delete unsetFields.canvasCourseId;
       delete unsetFields.canvasAccountKey;
+      delete unsetFields.canvasCourseKey;
 
       if (Object.prototype.hasOwnProperty.call(update, 'chatProjectId') && update.chatProjectId) {
         const chatProjectId = typeof update.chatProjectId === 'string' ? update.chatProjectId : '';
@@ -369,8 +469,14 @@ export function createConversationMethods(
       const setOnInsert: Record<string, unknown> = {};
       if (requestedCanvasCourseId != null) {
         setOnInsert.canvasCourseId = requestedCanvasCourseId;
-        if (metadata?.canvasAccountKey && /^[a-f\d]{24}$/.test(metadata.canvasAccountKey)) {
+        if (
+          metadata?.canvasAccountKey &&
+          CANVAS_ACCOUNT_KEY_PATTERN.test(metadata.canvasAccountKey)
+        ) {
           setOnInsert.canvasAccountKey = metadata.canvasAccountKey;
+        }
+        if (metadata?.canvasCourseKey && CANVAS_COURSE_KEY_PATTERN.test(metadata.canvasCourseKey)) {
+          setOnInsert.canvasCourseKey = metadata.canvasCourseKey;
         }
       }
       const updateOperation: Record<string, unknown> = { $set: update };
@@ -564,6 +670,7 @@ export function createConversationMethods(
         // Trusted same-user clones use copyConvoCanvasScope after inserting the target.
         delete sanitized.canvasCourseId;
         delete sanitized.canvasAccountKey;
+        delete sanitized.canvasCourseKey;
         if (typeof sanitized.user === 'string' && typeof sanitized.chatProjectId === 'string') {
           if (ownedProjects.has(`${sanitized.user}:${sanitized.chatProjectId}`)) {
             affectedProjectStats.set(`${sanitized.user}:${sanitized.chatProjectId}`, {
@@ -933,6 +1040,8 @@ export function createConversationMethods(
     getConvosQueried,
     getConvo,
     getConvoCanvasAccountKey,
+    getConvoCanvasScope,
+    bindConvoCanvasCourseKey,
     copyConvoCanvasScope,
     getConvoRetention,
     getConvoTitle,

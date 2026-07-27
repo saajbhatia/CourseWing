@@ -991,6 +991,7 @@ class BaseClient {
       context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveConvo',
       unsetFields,
       canvasAccountKey: req?.courseWingCanvasAccountKey,
+      canvasCourseKey: req?.courseWingCanvasCourseKey,
       createdAtOnInsert: shouldSetCreatedAtOnInsert ? validCreatedAtOnInsert : undefined,
     });
 

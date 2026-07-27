@@ -10,6 +10,8 @@ import {
 export type CourseWingCourseSummary = {
   id: string;
   canvasCourseId: number;
+  courseKey: string;
+  isInstructor: boolean;
   name: string;
   courseCode: string | null;
   workflowState: string | null;
