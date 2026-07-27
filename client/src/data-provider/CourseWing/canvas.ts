@@ -139,6 +139,24 @@ export function useConnectCanvasMutation(): UseMutationResult<
   );
 }
 
+/** Attaches the user to the shared frozen demo dataset (skip-onboarding path). */
+export function useDemoModeMutation(): UseMutationResult<CanvasConnection, Error, void> {
+  const queryClient = useQueryClient();
+  return useMutation<CanvasConnection, Error, void>(
+    () => request.post('/api/coursewing/demo', {}),
+    {
+      onSuccess: (data) => {
+        clearCanvasClientState();
+        observedCanvasAccountKey = canvasIdentity(data);
+        queryClient.setQueryData<CanvasConnection>(canvasConnectionQueryKey, data);
+        removeCanvasScopedQueries(queryClient);
+        queryClient.invalidateQueries(['coursewing']);
+        queryClient.invalidateQueries([QueryKeys.messages]);
+      },
+    },
+  );
+}
+
 /** Fetches the Google consent URL and sends the browser there; the OAuth callback returns to the app. */
 export function useConnectGoogleClassroomMutation(): UseMutationResult<
   { url?: string },

@@ -15,6 +15,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import {
+  useDemoModeMutation,
   useCanvasConnectionQuery,
   useConnectCanvasMutation,
   useCurrentCoursesQuery,
@@ -130,6 +131,7 @@ export default function Wizard() {
   const courses = useCurrentCoursesQuery();
   const connectMutation = useConnectCanvasMutation();
   const googleMutation = useConnectGoogleClassroomMutation();
+  const demoMutation = useDemoModeMutation();
 
   const failedOutcomeToasted = useRef(false);
   useEffect(() => {
@@ -214,12 +216,28 @@ export default function Wizard() {
     );
   };
 
+  /** Skip still shows a fully-populated product: attach the shared demo dataset, fall back to a bare skip. */
+  const handleSkip = () => {
+    if (demoMutation.isLoading) {
+      return;
+    }
+    demoMutation.mutate(undefined, {
+      onSuccess: () => {
+        markOnboarded(user?.id);
+        setStep('sync');
+      },
+      onError: finish,
+    });
+  };
+
   const skipLink = (
     <button
       type="button"
-      onClick={finish}
-      className="mt-6 text-sm text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+      onClick={handleSkip}
+      disabled={demoMutation.isLoading}
+      className="mt-6 flex items-center gap-2 text-sm text-text-secondary underline-offset-4 hover:text-text-primary hover:underline disabled:opacity-60"
     >
+      {demoMutation.isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
       {localize('com_ui_onboarding_skip')}
     </button>
   );
@@ -476,7 +494,7 @@ export default function Wizard() {
       <p className="mt-2 text-sm text-text-secondary">
         {syncDone
           ? localize('com_ui_onboarding_sync_done_subtitle', {
-              0: String(data?.courseCount ?? courseNames.length),
+              0: String(courseNames.length > 0 ? courseNames.length : (data?.courseCount ?? 0)),
             })
           : localize('com_ui_onboarding_sync_subtitle')}
       </p>

@@ -387,6 +387,47 @@ router.put('/canvas', requireJwtAuth, async (req, res) => {
   }
 });
 
+/**
+ * Maps the user onto the shared, frozen, PII-scrubbed demo tenant so "skip"
+ * still shows a fully-populated product. The tenant itself is never deleted —
+ * the service no-ops deletion for demo tenants — so switching to a real
+ * account later only moves the mapping.
+ */
+router.post('/demo', requireJwtAuth, async (req, res) => {
+  const demoTenantId = process.env.COURSEWING_DEMO_TENANT_ID?.trim();
+  if (!isValidCourseWingTenantId(demoTenantId)) {
+    return res.status(404).json({ message: 'Demo data is not available on this server' });
+  }
+
+  const release = await acquireCanvasMutationLock(req.user.id);
+  try {
+    if (!(await retryPendingRevocation(req.user.id))) {
+      return res.status(503).json({
+        message: 'A previous Canvas connection is still being cleaned up; try again shortly',
+      });
+    }
+    const { ok, body } = await serviceFetch(`/api/coursewing/tenants/${demoTenantId}`);
+    if (!ok || body?.tenantId !== demoTenantId) {
+      return res.status(502).json({ message: 'Demo data is unavailable' });
+    }
+
+    const previousTenantId = await getCourseWingTenantId(req.user.id);
+    const { warning } = await adoptTenant(req.user.id, previousTenantId, demoTenantId);
+    return res.json({
+      connected: true,
+      isDefault: false,
+      demo: true,
+      ...publicCanvasStatus(body),
+      ...(warning ? { warning } : {}),
+    });
+  } catch (error) {
+    logger.error('[coursewing/demo] Failed to attach the demo tenant', error);
+    return res.status(502).json({ message: 'Demo data is unavailable' });
+  } finally {
+    release();
+  }
+});
+
 function googleRedirectUri(req) {
   const base =
     process.env.DOMAIN_CLIENT?.trim() ||
