@@ -90,7 +90,7 @@ export default function Wizard() {
   const navigate = useNavigate();
   const { showToast } = useToastContext();
   const [searchParams] = useSearchParams();
-  const { isAuthenticated, isGuest } = useAuthContext();
+  const { user, isAuthenticated, isGuest } = useAuthContext();
 
   const outcome = searchParams.get('classroom');
   const [step, setStep] = useState<Step>(() => initialStep(outcome));
@@ -146,7 +146,7 @@ export default function Wizard() {
   }
 
   const finish = () => {
-    markOnboarded();
+    markOnboarded(user?.id);
     navigate('/c/new', { replace: true });
   };
 

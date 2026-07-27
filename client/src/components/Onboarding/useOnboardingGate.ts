@@ -13,17 +13,18 @@ import { useAuthContext } from '~/hooks';
 export default function useOnboardingGate(): void {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isGuest } = useAuthContext();
+  const { user, isAuthenticated, isGuest } = useAuthContext();
   const eligible = isAuthenticated && !isGuest;
   const connection = useCanvasConnectionQuery({ enabled: eligible });
 
   const data = connection.data;
+  const userId = user?.id;
   useEffect(() => {
-    if (!eligible) {
+    if (!eligible || userId == null) {
       return;
     }
     const classroom = new URLSearchParams(location.search).get('classroom');
-    if (classroom != null && !hasOnboarded()) {
+    if (classroom != null && !hasOnboarded(userId)) {
       navigate(`/onboarding?classroom=${encodeURIComponent(classroom)}`, { replace: true });
       return;
     }
@@ -31,11 +32,11 @@ export default function useOnboardingGate(): void {
       return;
     }
     if (data.connected === true) {
-      markOnboarded();
+      markOnboarded(userId);
       return;
     }
-    if (!hasOnboarded()) {
+    if (!hasOnboarded(userId)) {
       navigate('/onboarding', { replace: true });
     }
-  }, [eligible, data, location.search, navigate]);
+  }, [eligible, userId, data, location.search, navigate]);
 }
