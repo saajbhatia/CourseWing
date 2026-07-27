@@ -86,11 +86,19 @@ export type CourseWingToolOptions = {
   userEmail?: string | null;
 };
 
-const SYNC_PENDING_MESSAGE =
-  "This student's Canvas account is still syncing — their courses and assignments aren't fully available yet. Tell the student their Canvas data is still syncing (this usually takes a few minutes after connecting) and to check back shortly. Do NOT guess or invent course information in the meantime.";
+const SYNC_STARTING_MESSAGE =
+  "This student just connected their school account and the very first sync is still running — their classes will appear within a minute. Engage with the student's question RIGHT NOW using general knowledge (explain the concept, offer study help, ask what class it's for) and mention that their classes are loading and will be ready in a moment. Do NOT guess or invent course information, and do NOT just tell them to come back later.";
 
 const SYNC_FAILED_MESSAGE =
   "This student's school account is connected but could not be synced — the school may not allow access, or a permission was declined while connecting. Tell the student their courses could not be loaded and to try reconnecting from Settings → Account (approving all permissions), or to ask their teacher for help. Do NOT tell them to simply wait, and do NOT guess or invent course information.";
+
+function syncPartialMessage(courseCount: number): string {
+  return (
+    `This student's account is connected and ${courseCount} of their classes have already synced, but the data for this specific request has not landed yet — the first sync usually finishes within a minute or two. ` +
+    'Answer the student RIGHT NOW with what is available: engage the question directly with general knowledge, use the other coursewing tools to reference their real classes where helpful, and mention that this particular piece is still loading so they can ask again in a moment. ' +
+    'Do NOT invent course specifics and do NOT just tell them to wait.'
+  );
+}
 
 /** Empty results on a freshly connected account usually mean the first sync hasn't finished, not that the student has no courses. */
 async function syncPendingMessage(tenantId?: string | null): Promise<string | null> {
@@ -98,13 +106,14 @@ async function syncPendingMessage(tenantId?: string | null): Promise<string | nu
   if (status == null) {
     return null;
   }
-  if (status.syncing) {
-    return SYNC_PENDING_MESSAGE;
+  const pending = status.syncing || status.lastSyncAt == null;
+  if (!pending) {
+    return null;
   }
-  if (status.lastSyncAt == null) {
-    return status.lastSyncError ? SYNC_FAILED_MESSAGE : SYNC_PENDING_MESSAGE;
+  if (!status.syncing && status.lastSyncAt == null && status.lastSyncError) {
+    return SYNC_FAILED_MESSAGE;
   }
-  return null;
+  return status.courseCount > 0 ? syncPartialMessage(status.courseCount) : SYNC_STARTING_MESSAGE;
 }
 
 function createGetAssignmentsTool(toolOptions: CourseWingToolOptions): DynamicStructuredTool {

@@ -453,8 +453,26 @@ describe('coursewing tools', () => {
       tenantId: 'tenant-1',
     }).invoke({});
 
-    expect(result).toContain('still syncing');
+    expect(result).toContain('first sync is still running');
     expect(result).toContain('Do NOT guess');
+  });
+
+  it('tells the model to answer from partial data when some classes have synced', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: { tenantId: 'tenant-1', syncing: true, lastSyncAt: null, courseCount: 5 },
+      },
+    ]);
+
+    const result = await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(result).toContain('5 of their classes have already synced');
+    expect(result).toContain('Answer the student RIGHT NOW');
+    expect(result).not.toContain('come back');
   });
 
   it('reports a failed connection instead of endless syncing when the first sync errored', async () => {
@@ -543,6 +561,6 @@ describe('coursewing tools', () => {
       tenantId: 'tenant-1',
     }).invoke({ query: 'entropy' });
 
-    expect(result).toContain('still syncing');
+    expect(result).toContain('first sync is still running');
   });
 });
