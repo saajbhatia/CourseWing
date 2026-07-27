@@ -1,6 +1,38 @@
 import { Constants } from 'librechat-data-provider';
 import { consumeGuestChatHandoff, storeGuestChatHandoff } from '~/utils/guestChatHandoff';
-import { clearPendingCourse, consumeCourseChatHandoff, openCourseChat } from './utils';
+import {
+  clearPendingCourse,
+  consumeCourseChatHandoff,
+  coursewingNow,
+  openCourseChat,
+  setCourseWingFrozenNow,
+} from './utils';
+
+describe('CourseWing tenant clock', () => {
+  afterEach(() => {
+    setCourseWingFrozenNow(null);
+    jest.useRealTimers();
+  });
+
+  it('uses an explicit tenant clock only until that tenant is cleared', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-01T12:00:00.000Z'));
+
+    setCourseWingFrozenNow('2026-07-15T08:30:00.000Z');
+    expect(coursewingNow().toISOString()).toBe('2026-07-15T08:30:00.000Z');
+
+    setCourseWingFrozenNow(null);
+    expect(coursewingNow().toISOString()).toBe('2026-09-01T12:00:00.000Z');
+  });
+
+  it('rejects malformed frozen metadata instead of falling back to the host clock', () => {
+    setCourseWingFrozenNow('2026-07-15T08:30:00.000Z');
+
+    expect(() => setCourseWingFrozenNow('not-a-date')).toThrow(
+      'Canvas returned an invalid frozen clock',
+    );
+    expect(coursewingNow().toISOString()).toBe('2026-07-15T08:30:00.000Z');
+  });
+});
 
 describe('openCourseChat', () => {
   beforeEach(() => {

@@ -5,6 +5,7 @@ import {
   COURSEWING_POLICY_MARKER,
 } from 'librechat-data-provider';
 import { buildAssignmentCard, buildCourseCard, extractCanvasCourseId } from '../card';
+import { getCourseWingNow } from '../config';
 import { clearCourseContextCache, getCourseContext } from '../service';
 import { buildAssistancePolicy, buildLearningDefault } from '../prompts';
 import {
@@ -82,6 +83,26 @@ const courseContext: CourseWingCourseContext = {
     },
   ],
 };
+
+describe('CourseWing host clock', () => {
+  const previousFakeNow = process.env.COURSEWING_FAKE_NOW;
+
+  afterEach(() => {
+    jest.useRealTimers();
+    if (previousFakeNow == null) {
+      delete process.env.COURSEWING_FAKE_NOW;
+    } else {
+      process.env.COURSEWING_FAKE_NOW = previousFakeNow;
+    }
+  });
+
+  it('does not apply a process-global demo clock to real tenants', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-01T12:00:00.000Z'));
+    process.env.COURSEWING_FAKE_NOW = '2026-07-15T08:30:00.000Z';
+
+    expect(getCourseWingNow().toISOString()).toBe('2026-09-01T12:00:00.000Z');
+  });
+});
 
 describe('extractCanvasCourseId', () => {
   it('extracts the course id from a prompt prefix', () => {

@@ -43,15 +43,10 @@ export function formatCourseWingDate(
   }).format(new Date(timestamp));
 }
 
-/** Demo/testing override: `COURSEWING_FAKE_NOW` makes the course card pretend "today" is that instant. */
+/**
+ * Returns the host clock. Frozen demo clocks are tenant-specific and must be
+ * supplied explicitly by the request layer rather than read from process state.
+ */
 export function getCourseWingNow(): Date {
-  const raw = process.env.COURSEWING_FAKE_NOW?.trim();
-  if (raw) {
-    const parsed = new Date(raw);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  }
-
   return new Date();
 }

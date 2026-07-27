@@ -53,11 +53,6 @@ RUN \
 
 COPY --chown=node:node . .
 
-# Optional demo clock baked into the Vite client. Keep this aligned with the
-# runtime COURSEWING_FAKE_NOW value when production demo mode is enabled.
-ARG VITE_COURSEWING_FAKE_NOW=
-ENV VITE_COURSEWING_FAKE_NOW=${VITE_COURSEWING_FAKE_NOW}
-
 RUN \
     # React client build with configurable memory
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \

@@ -26,6 +26,21 @@ export const courseMaterialsQueryKeyPrefix = ['coursewing', 'course-materials'] 
 
 let observedCanvasAccountKey: string | null | undefined;
 
+function validateCanvasConnection(connection: CanvasConnection): CanvasConnection {
+  if (
+    connection.connected === true &&
+    connection.frozenNow != null &&
+    (typeof connection.frozenNow !== 'string' || !Number.isFinite(Date.parse(connection.frozenNow)))
+  ) {
+    throw new Error('Canvas returned an invalid frozen clock');
+  }
+  return connection;
+}
+
+async function getCanvasConnection(): Promise<CanvasConnection> {
+  return validateCanvasConnection(await request.get<CanvasConnection>('/api/coursewing/canvas'));
+}
+
 function canvasIdentity(connection: CanvasConnection | undefined): string | null {
   return connection?.connected === true && typeof connection.canvasAccountKey === 'string'
     ? connection.canvasAccountKey
@@ -37,10 +52,11 @@ function clearCanvasClientState(): void {
   clearPendingCourse();
 }
 
-function observeCanvasIdentity(connection: CanvasConnection): void {
+function observeCanvasIdentity(queryClient: QueryClient, connection: CanvasConnection): void {
   const nextIdentity = canvasIdentity(connection);
   if (observedCanvasAccountKey !== undefined && observedCanvasAccountKey !== nextIdentity) {
     clearCanvasClientState();
+    removeCanvasScopedQueries(queryClient);
   }
   observedCanvasAccountKey = nextIdentity;
   setCourseWingFrozenNow(connection.connected === true ? connection.frozenNow : null);
@@ -49,6 +65,11 @@ function observeCanvasIdentity(connection: CanvasConnection): void {
 function removeCanvasScopedQueries(queryClient: QueryClient): void {
   queryClient.removeQueries(currentCoursesQueryKeyPrefix);
   queryClient.removeQueries(courseMaterialsQueryKeyPrefix);
+  queryClient.removeQueries({
+    predicate: ({ queryKey }) =>
+      typeof queryKey[0] === 'string' &&
+      (queryKey[0].startsWith('tc') || queryKey[0] === 'llTeacherActivities'),
+  });
   queryClient.removeQueries([QueryKeys.conversation]);
   queryClient.removeQueries([QueryKeys.allConversations]);
 }
@@ -57,35 +78,31 @@ export function useCanvasConnectionQuery(options?: {
   enabled?: boolean;
 }): UseQueryResult<CanvasConnection> {
   const queryClient = useQueryClient();
-  return useQuery<CanvasConnection>(
-    canvasConnectionQueryKey,
-    () => request.get('/api/coursewing/canvas'),
-    {
-      enabled: options?.enabled !== false,
-      staleTime: 30000,
-      retry: 1,
-      refetchInterval: (data) => (data?.connected === true && data.syncing === true ? 5000 : false),
-      onSuccess: (data) => {
-        observeCanvasIdentity(data);
-        if (data.connected !== true) {
-          return;
-        }
-        const cachedCourseQueries = queryClient.getQueriesData<CourseWingCourseSummary[]>(
-          currentCoursesQueryKeyPrefix,
+  return useQuery<CanvasConnection>(canvasConnectionQueryKey, getCanvasConnection, {
+    enabled: options?.enabled !== false,
+    staleTime: 30000,
+    retry: 1,
+    refetchInterval: (data) => (data?.connected === true && data.syncing === true ? 5000 : false),
+    onSuccess: (data) => {
+      observeCanvasIdentity(queryClient, data);
+      if (data.connected !== true) {
+        return;
+      }
+      const cachedCourseQueries = queryClient.getQueriesData<CourseWingCourseSummary[]>(
+        currentCoursesQueryKeyPrefix,
+      );
+      const countMismatch =
+        typeof data.courseCount === 'number' &&
+        cachedCourseQueries.some(
+          ([, courses]) => Array.isArray(courses) && courses.length !== data.courseCount,
         );
-        const countMismatch =
-          typeof data.courseCount === 'number' &&
-          cachedCourseQueries.some(
-            ([, courses]) => Array.isArray(courses) && courses.length !== data.courseCount,
-          );
-        /* During a sync, courses land in the store one by one — refresh on every status
-         * poll so the sidebar fills as they arrive instead of waiting for full completion. */
-        if (data.syncing === true || countMismatch) {
-          queryClient.invalidateQueries(currentCoursesQueryKeyPrefix);
-        }
-      },
+      /* During a sync, courses land in the store one by one — refresh on every status
+       * poll so the sidebar fills as they arrive instead of waiting for full completion. */
+      if (data.syncing === true || countMismatch) {
+        queryClient.invalidateQueries(currentCoursesQueryKeyPrefix);
+      }
     },
-  );
+  });
 }
 
 export type CanvasSchool = {
@@ -121,7 +138,10 @@ export function useConnectCanvasMutation(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<CanvasConnection, Error, ConnectCanvasPayload>(
-    (payload) => request.put('/api/coursewing/canvas', payload),
+    async (payload) =>
+      validateCanvasConnection(
+        (await request.put('/api/coursewing/canvas', payload)) as CanvasConnection,
+      ),
     {
       onSuccess: (data) => {
         const previousIdentity = canvasIdentity(
@@ -132,6 +152,7 @@ export function useConnectCanvasMutation(): UseMutationResult<
           clearCanvasClientState();
         }
         observedCanvasAccountKey = nextIdentity;
+        setCourseWingFrozenNow(data.connected === true ? data.frozenNow : null);
         queryClient.setQueryData<CanvasConnection>(canvasConnectionQueryKey, data);
         removeCanvasScopedQueries(queryClient);
         queryClient.invalidateQueries(['coursewing']);
@@ -145,11 +166,15 @@ export function useConnectCanvasMutation(): UseMutationResult<
 export function useDemoModeMutation(): UseMutationResult<CanvasConnection, Error, void> {
   const queryClient = useQueryClient();
   return useMutation<CanvasConnection, Error, void>(
-    () => request.post('/api/coursewing/demo', {}),
+    async () =>
+      validateCanvasConnection(
+        (await request.post('/api/coursewing/demo', {})) as CanvasConnection,
+      ),
     {
       onSuccess: (data) => {
         clearCanvasClientState();
         observedCanvasAccountKey = canvasIdentity(data);
+        setCourseWingFrozenNow(data.connected === true ? data.frozenNow : null);
         queryClient.setQueryData<CanvasConnection>(canvasConnectionQueryKey, data);
         removeCanvasScopedQueries(queryClient);
         queryClient.invalidateQueries(['coursewing']);
@@ -180,11 +205,13 @@ export function useConnectGoogleClassroomMutation(): UseMutationResult<
 export function useDisconnectCanvasMutation(): UseMutationResult<CanvasConnection, Error, void> {
   const queryClient = useQueryClient();
   return useMutation<CanvasConnection, Error, void>(
-    () => request.delete('/api/coursewing/canvas'),
+    async () =>
+      validateCanvasConnection(await request.delete<CanvasConnection>('/api/coursewing/canvas')),
     {
       onSuccess: (data) => {
         clearCanvasClientState();
         observedCanvasAccountKey = canvasIdentity(data);
+        setCourseWingFrozenNow(data.connected === true ? data.frozenNow : null);
         queryClient.setQueryData<CanvasConnection>(canvasConnectionQueryKey, {
           enabled: true,
           ...data,

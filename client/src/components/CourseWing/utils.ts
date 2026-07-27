@@ -24,11 +24,19 @@ const courseColors = [
   { background: '#a43f75', foreground: '#ffffff' },
 ];
 
-let fakeNowMs = Date.parse(import.meta.env.VITE_COURSEWING_FAKE_NOW ?? '');
+let frozenNowMs = NaN;
 
 /** Demo tenants carry a frozen clock; the connection query feeds it here so course views agree with the data. */
 export function setCourseWingFrozenNow(iso?: string | null): void {
-  fakeNowMs = iso ? Date.parse(iso) : NaN;
+  if (iso == null) {
+    frozenNowMs = NaN;
+    return;
+  }
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) {
+    throw new RangeError('Canvas returned an invalid frozen clock');
+  }
+  frozenNowMs = parsed;
 }
 
 /** Canvas names are untrusted text; keep them on one inert prefix line. */
@@ -55,9 +63,9 @@ function prefixValue(value: string): string {
   return normalized.trim();
 }
 
-/** Demo/testing override: `VITE_COURSEWING_FAKE_NOW` makes course views pretend "now" is that instant. */
+/** Returns the current tenant clock, falling back to the browser clock for real accounts. */
 export function coursewingNow(): Date {
-  return Number.isNaN(fakeNowMs) ? new Date() : new Date(fakeNowMs);
+  return Number.isNaN(frozenNowMs) ? new Date() : new Date(frozenNowMs);
 }
 
 export const iconButtonClassName =
