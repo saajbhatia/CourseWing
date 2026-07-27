@@ -312,9 +312,16 @@ export default function Wizard() {
             {debouncedSchoolQuery.trim().length >= 3 &&
               !schoolSearch.isFetching &&
               schoolSearch.data?.length === 0 && (
-                <span className="text-xs text-text-secondary">
-                  {localize('com_ui_onboarding_school_none')}
-                </span>
+                <div className="flex flex-col gap-1 rounded-lg border border-border-light bg-surface-secondary px-3 py-2 text-xs text-text-secondary">
+                  <span className="font-medium text-text-primary">
+                    {localize('com_ui_onboarding_school_none_title')}
+                  </span>
+                  <ul className="list-disc space-y-0.5 pl-4">
+                    <li>{localize('com_ui_onboarding_school_none_tip1')}</li>
+                    <li>{localize('com_ui_onboarding_school_none_tip2')}</li>
+                    <li>{localize('com_ui_onboarding_school_none_tip3')}</li>
+                  </ul>
+                </div>
               )}
             <button
               type="button"
