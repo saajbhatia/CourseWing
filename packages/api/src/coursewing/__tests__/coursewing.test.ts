@@ -457,6 +457,30 @@ describe('coursewing tools', () => {
     expect(result).toContain('Do NOT guess');
   });
 
+  it('reports a failed connection instead of endless syncing when the first sync errored', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [] } },
+      {
+        match: '/tenants/tenant-1',
+        payload: {
+          tenantId: 'tenant-1',
+          syncing: false,
+          lastSyncAt: null,
+          lastSyncError: 'Google request failed (403 Forbidden) for /v1/courses',
+          courseCount: 0,
+        },
+      },
+    ]);
+
+    const result = await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({});
+
+    expect(result).toContain('could not be synced');
+    expect(result).not.toContain('still syncing');
+    expect(result).toContain('Do NOT tell them to simply wait');
+  });
+
   it('returns the empty assignment list unchanged once the tenant has synced', async () => {
     mockFetchByUrl([
       { match: '/assignments', payload: { assignments: [] } },

@@ -172,8 +172,9 @@ export default function CanvasConnection() {
   );
 
   if (connection.data?.connected === true) {
-    const { userName, courseCount, syncing, lastSyncAt, baseUrl, isDefault, provider } =
+    const { userName, courseCount, syncing, lastSyncAt, lastSyncError, baseUrl, isDefault, provider } =
       connection.data;
+    const syncFailed = syncing !== true && lastSyncAt == null && Boolean(lastSyncError);
     const host =
       provider === 'google' ? localize('com_ui_classroom_source_label') : hostOf(baseUrl);
     return (
@@ -189,6 +190,10 @@ export default function CanvasConnection() {
                 <span className="flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                   {localize('com_ui_canvas_syncing', { 0: String(courseCount ?? 0) })}
+                </span>
+              ) : syncFailed ? (
+                <span className="text-red-600 dark:text-red-400">
+                  {localize('com_ui_canvas_sync_failed')}
                 </span>
               ) : (
                 localize('com_ui_canvas_sync_status', {

@@ -89,11 +89,20 @@ export type CourseWingToolOptions = {
 const SYNC_PENDING_MESSAGE =
   "This student's Canvas account is still syncing — their courses and assignments aren't fully available yet. Tell the student their Canvas data is still syncing (this usually takes a few minutes after connecting) and to check back shortly. Do NOT guess or invent course information in the meantime.";
 
+const SYNC_FAILED_MESSAGE =
+  "This student's school account is connected but could not be synced — the school may not allow access, or a permission was declined while connecting. Tell the student their courses could not be loaded and to try reconnecting from Settings → Account (approving all permissions), or to ask their teacher for help. Do NOT tell them to simply wait, and do NOT guess or invent course information.";
+
 /** Empty results on a freshly connected account usually mean the first sync hasn't finished, not that the student has no courses. */
 async function syncPendingMessage(tenantId?: string | null): Promise<string | null> {
   const status = await getTenantStatusSafe(tenantId);
-  if (status != null && (status.syncing || status.lastSyncAt == null)) {
+  if (status == null) {
+    return null;
+  }
+  if (status.syncing) {
     return SYNC_PENDING_MESSAGE;
+  }
+  if (status.lastSyncAt == null) {
+    return status.lastSyncError ? SYNC_FAILED_MESSAGE : SYNC_PENDING_MESSAGE;
   }
   return null;
 }

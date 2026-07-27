@@ -193,6 +193,7 @@ export type CourseWingTenantStatus = {
   userName?: string | null;
   baseUrl?: string;
   lastSyncAt: string | null;
+  lastSyncError?: string | null;
   syncing: boolean;
   courseCount: number;
 };

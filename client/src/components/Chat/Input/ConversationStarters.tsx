@@ -7,14 +7,17 @@ import {
 } from '~/data-provider';
 import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/Providers';
 import { getIconEndpoint, getEntity, getModelSpec } from '~/utils';
-import { useSubmitMessage } from '~/hooks';
+import { useCurrentCoursesQuery } from '~/data-provider/CourseWing';
+import { useSubmitMessage, useLocalize } from '~/hooks';
 
 const ConversationStarters = () => {
+  const localize = useLocalize();
   const { conversation } = useChatContext();
   const agentsMap = useAgentsMapContext();
   const assistantMap = useAssistantsMapContext();
   const { data: endpointsConfig } = useGetEndpointsQuery();
   const { data: startupConfig } = useGetStartupConfig();
+  const { data: courses } = useCurrentCoursesQuery();
 
   const endpointType = useMemo(() => {
     let ep = conversation?.endpoint ?? '';
@@ -45,9 +48,25 @@ const ConversationStarters = () => {
     [conversation?.spec, startupConfig],
   );
 
+  /** Starters grounded in the student's real synced classes beat static prompts. */
+  const courseWingStarters = useMemo(() => {
+    if (startupConfig?.courseWingEnabled !== true || courses == null || courses.length === 0) {
+      return [];
+    }
+    return [
+      localize('com_ui_starter_due_week'),
+      ...courses.slice(0, 2).map((course) => localize('com_ui_starter_study_course', { 0: course.name })),
+      localize('com_ui_starter_grades'),
+    ];
+  }, [startupConfig?.courseWingEnabled, courses, localize]);
+
   const conversation_starters = useMemo(() => {
     if (entity?.conversation_starters?.length) {
       return entity.conversation_starters;
+    }
+
+    if (courseWingStarters.length) {
+      return courseWingStarters;
     }
 
     if (modelSpec?.conversation_starters?.length) {
@@ -59,7 +78,7 @@ const ConversationStarters = () => {
     }
 
     return documentsMap.get(entity?.id ?? '')?.conversation_starters ?? [];
-  }, [documentsMap, isAgent, entity, modelSpec]);
+  }, [documentsMap, isAgent, entity, modelSpec, courseWingStarters]);
 
   const { submitMessage } = useSubmitMessage();
   const sendConversationStarter = useCallback(

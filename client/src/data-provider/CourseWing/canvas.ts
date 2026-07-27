@@ -14,6 +14,7 @@ export type CanvasConnection = {
   userName?: string | null;
   baseUrl?: string;
   lastSyncAt?: string | null;
+  lastSyncError?: string | null;
   syncing?: boolean;
   courseCount?: number;
 };
@@ -50,12 +51,15 @@ function removeCanvasScopedQueries(queryClient: QueryClient): void {
   queryClient.removeQueries([QueryKeys.allConversations]);
 }
 
-export function useCanvasConnectionQuery(): UseQueryResult<CanvasConnection> {
+export function useCanvasConnectionQuery(options?: {
+  enabled?: boolean;
+}): UseQueryResult<CanvasConnection> {
   const queryClient = useQueryClient();
   return useQuery<CanvasConnection>(
     canvasConnectionQueryKey,
     () => request.get('/api/coursewing/canvas'),
     {
+      enabled: options?.enabled !== false,
       staleTime: 30000,
       retry: 1,
       refetchInterval: (data) => (data?.connected === true && data.syncing === true ? 5000 : false),

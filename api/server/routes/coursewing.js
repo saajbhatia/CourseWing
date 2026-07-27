@@ -38,6 +38,7 @@ const PUBLIC_CANVAS_STATUS_FIELDS = [
   'userName',
   'baseUrl',
   'lastSyncAt',
+  'lastSyncError',
   'syncing',
   'courseCount',
 ];
@@ -394,10 +395,31 @@ function googleRedirectUri(req) {
   return new URL('/api/coursewing/google/callback', base).toString();
 }
 
+/** Origin the user's browser was on when starting the flow (Vite dev ≠ backend), so the callback can return them there. */
+function requestReturnOrigin(req) {
+  try {
+    return new URL(req.get('referer') ?? req.get('origin') ?? '').origin;
+  } catch {
+    return '';
+  }
+}
+
+function sanitizeReturnOrigin(value) {
+  if (typeof value !== 'string' || !value) {
+    return '';
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
 router.get('/google/auth-url', requireJwtAuth, async (req, res) => {
   try {
     const state = jwt.sign(
-      { sub: req.user.id, purpose: GOOGLE_OAUTH_STATE_PURPOSE },
+      { sub: req.user.id, purpose: GOOGLE_OAUTH_STATE_PURPOSE, origin: requestReturnOrigin(req) },
       process.env.JWT_SECRET,
       { expiresIn: '10m' },
     );
@@ -419,23 +441,24 @@ router.get('/google/auth-url', requireJwtAuth, async (req, res) => {
 
 /** Browser-facing OAuth callback: verifies the signed state, links the tenant, returns to the app. */
 router.get('/google/callback', async (req, res) => {
-  const finish = (outcome) => res.redirect(`/c/new?classroom=${outcome}`);
-  if (typeof req.query?.error === 'string' && req.query.error) {
-    return finish('denied');
-  }
-  const code = typeof req.query?.code === 'string' ? req.query.code : '';
-  if (!code) {
-    return finish('invalid');
-  }
-
   let userId;
+  let returnOrigin = '';
   try {
     const payload = jwt.verify(String(req.query?.state ?? ''), process.env.JWT_SECRET);
     if (payload?.purpose !== GOOGLE_OAUTH_STATE_PURPOSE || typeof payload?.sub !== 'string') {
       throw new Error('Unexpected state payload');
     }
     userId = payload.sub;
+    returnOrigin = sanitizeReturnOrigin(payload.origin);
   } catch {
+    userId = undefined;
+  }
+  const finish = (outcome) => res.redirect(`${returnOrigin}/c/new?classroom=${outcome}`);
+  if (typeof req.query?.error === 'string' && req.query.error) {
+    return finish('denied');
+  }
+  const code = typeof req.query?.code === 'string' ? req.query.code : '';
+  if (!code || !userId) {
     return finish('invalid');
   }
 
