@@ -440,6 +440,30 @@ describe('coursewing tools', () => {
     );
   });
 
+  it('defaults a name search to the all filter so undated assignments are found', async () => {
+    mockFetchByUrl([
+      { match: '/assignments', payload: { assignments: [{ name: 'A Day with Arabic' }] } },
+    ]);
+
+    await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({ query: 'A Day with Arabic' });
+
+    const [url] = jest.mocked(global.fetch).mock.calls[0];
+    expect(String(url)).toContain('filter=all');
+  });
+
+  it('keeps an explicit filter even when a name query is present', async () => {
+    mockFetchByUrl([{ match: '/assignments', payload: { assignments: [{ name: 'RT-U3' }] } }]);
+
+    await createCourseWingTool(COURSEWING_GET_ASSIGNMENTS, {
+      tenantId: 'tenant-1',
+    }).invoke({ query: 'RT', filter: 'graded' });
+
+    const [url] = jest.mocked(global.fetch).mock.calls[0];
+    expect(String(url)).toContain('filter=graded');
+  });
+
   it('reports sync-in-progress instead of an empty assignment list while the tenant syncs', async () => {
     mockFetchByUrl([
       { match: '/assignments', payload: { assignments: [] } },

@@ -63,7 +63,7 @@ export const requiredCourseIdDescription =
   "Canvas course ID. Only pass an ID you have actually seen — from the conversation's course context or a previous tool result. If you don't have one, call coursewing_get_assignments first (its results include each course's ID). NEVER guess or invent an ID.";
 
 export const assignmentFilterDescription =
-  'Which assignments to return. Defaults to upcoming (soonest first); graded filters before applying the limit; past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.';
+  'Which assignments to return. Defaults to upcoming (soonest first) — except when query is set, which defaults to all so name searches also find undated and past assignments; graded filters before applying the limit; past/all return most recent first. If the result says truncated=true, narrow with query or dueAfter/dueBefore rather than assuming you saw everything.';
 
 const courseIdParam = z.number().int().optional().describe(courseIdDescription);
 
@@ -137,9 +137,13 @@ function createGetAssignmentsTool(toolOptions: CourseWingToolOptions): DynamicSt
   return tool(
     async ({ canvasCourseId, filter, query, dueAfter, dueBefore, withDescriptions, limit }) => {
       try {
+        /* A name search without an explicit filter must cover undated and past
+         * assignments too — defaulting to 'upcoming' made existing assignments
+         * look like they didn't exist. */
+        const effectiveFilter = filter ?? (query?.trim() ? 'all' : undefined);
         const result = await getAssignments({
           canvasCourseId,
-          filter,
+          filter: effectiveFilter,
           query,
           dueAfter,
           dueBefore,
