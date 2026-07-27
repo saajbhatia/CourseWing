@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { logger } = require('@librechat/data-schemas');
+const { randomBytes } = require('crypto');
+const { logger, runAsSystem } = require('@librechat/data-schemas');
 const {
   decrypt,
   getCanvasServiceUrl,
@@ -8,7 +9,7 @@ const {
   CanvasServiceResponseTooLargeError,
 } = require('@librechat/api');
 const { Constants, extractCanvasCourseId } = require('librechat-data-provider');
-const { getUserPluginAuthValue } = require('~/server/services/PluginService');
+const { getOptionalUserPluginAuthValue } = require('~/server/services/PluginService');
 const {
   COURSEWING_PLUGIN_KEY,
   LEGACY_COURSEWING_PLUGIN_KEY,
@@ -26,27 +27,157 @@ const MAX_SHARED_MESSAGE_BYTES = 50_000;
 const MAX_SHARED_TITLE_BYTES = 5_000;
 const MAX_SHARED_SENDER_BYTES = 500;
 const CANVAS_IDENTITY_CACHE_TTL_MS = 60_000;
+const COURSEWING_MUTATION_LOCK_LEASE_MS = 3 * 60_000;
+const COURSEWING_MUTATION_LOCK_WAIT_MS = 30_000;
 const DEFAULT_CANVAS_IDENTITY_CACHE_KEY = '__default__';
 const canvasIdentityCache = new Map();
+let courseWingMutationLockModel;
+
+class CanvasTenantStatusError extends Error {
+  constructor(status) {
+    super(`Canvas tenant status failed with ${status}`);
+    this.status = status;
+  }
+}
+
+function getCourseWingMutationLockModel() {
+  if (courseWingMutationLockModel) {
+    return courseWingMutationLockModel;
+  }
+  if (mongoose.models.CourseWingMutationLock) {
+    courseWingMutationLockModel = mongoose.models.CourseWingMutationLock;
+    return courseWingMutationLockModel;
+  }
+  const schema = new mongoose.Schema(
+    {
+      _id: { type: String, required: true },
+      owner: { type: String, required: true },
+      expiresAt: { type: Date, required: true, expires: 0 },
+    },
+    { versionKey: false },
+  );
+  courseWingMutationLockModel = mongoose.model('CourseWingMutationLock', schema);
+  return courseWingMutationLockModel;
+}
+
+/** Acquires a crash-recoverable cross-process lease for one opaque user binding. */
+async function acquireCourseWingMutationLease(bindingId) {
+  if (typeof bindingId !== 'string' || !/^[a-f\d]{64}$/.test(bindingId)) {
+    throw new Error('Invalid CourseWing binding id');
+  }
+  const Lock = getCourseWingMutationLockModel();
+  const owner = randomBytes(16).toString('hex');
+  const deadline = Date.now() + COURSEWING_MUTATION_LOCK_WAIT_MS;
+  while (Date.now() < deadline) {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + COURSEWING_MUTATION_LOCK_LEASE_MS);
+    try {
+      const lock = await Lock.findOneAndUpdate(
+        {
+          _id: bindingId,
+          $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $lte: now } }],
+        },
+        {
+          $set: {
+            owner,
+            expiresAt,
+          },
+          $setOnInsert: { _id: bindingId },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ).lean();
+      if (lock?.owner === owner) {
+        let stopping = false;
+        let leaseLost = false;
+        let leaseExpiresAt = expiresAt.getTime();
+        let renewal = Promise.resolve();
+        const renewalTimer = setInterval(() => {
+          renewal = renewal
+            .then(async () => {
+              if (stopping) {
+                return;
+              }
+              const renewedAt = new Date();
+              const nextExpiry = new Date(renewedAt.getTime() + COURSEWING_MUTATION_LOCK_LEASE_MS);
+              const result = await Lock.updateOne(
+                { _id: bindingId, owner },
+                {
+                  $set: {
+                    expiresAt: nextExpiry,
+                  },
+                },
+              );
+              if (result.matchedCount !== 1) {
+                leaseLost = true;
+                logger.error(`[CourseWing] Mutation lease ${bindingId} was lost during renewal`);
+              } else {
+                leaseExpiresAt = nextExpiry.getTime();
+              }
+            })
+            .catch((error) => {
+              if (Date.now() >= leaseExpiresAt) {
+                leaseLost = true;
+              }
+              logger.warn(
+                `[CourseWing] Failed to renew mutation lease ${bindingId}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            });
+        }, COURSEWING_MUTATION_LOCK_LEASE_MS / 3);
+        renewalTimer.unref?.();
+        return async () => {
+          stopping = true;
+          clearInterval(renewalTimer);
+          await renewal;
+          if (Date.now() >= leaseExpiresAt) {
+            leaseLost = true;
+          }
+          try {
+            const result = await Lock.deleteOne({ _id: bindingId, owner });
+            if (result.deletedCount !== 1) {
+              leaseLost = true;
+              logger.error(`[CourseWing] Mutation lease ${bindingId} was lost before release`);
+            }
+          } catch (error) {
+            leaseLost = true;
+            logger.warn(
+              `[CourseWing] Failed to release mutation lease ${bindingId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+          if (leaseLost) {
+            throw new Error(`CourseWing mutation lease ${bindingId} was lost`);
+          }
+        };
+      }
+    } catch (error) {
+      if (error?.code !== 11000) {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 75));
+  }
+  throw new Error('Timed out waiting for another CourseWing account update');
+}
 
 /** Returns the user's Canvas tenant id, or null when they haven't connected an account. */
 async function getCourseWingTenantId(userId) {
   if (!userId) {
     return null;
   }
-  const current = await getUserPluginAuthValue(
+  const current = await getOptionalUserPluginAuthValue(
     userId,
     CANVAS_TENANT_FIELD,
-    false,
     COURSEWING_PLUGIN_KEY,
   );
   if (isValidCourseWingTenantId(current)) {
     return current;
   }
-  const legacy = await getUserPluginAuthValue(
+  const legacy = await getOptionalUserPluginAuthValue(
     userId,
     LEGACY_CANVAS_TENANT_FIELD,
-    false,
     LEGACY_COURSEWING_PLUGIN_KEY,
   );
   if (isValidCourseWingTenantId(legacy)) {
@@ -56,6 +187,63 @@ async function getCourseWingTenantId(userId) {
     logger.warn('[CourseWing] Ignoring an invalid stored Canvas tenant id');
   }
   return null;
+}
+
+/**
+ * Checks every app tenant before a service tenant is revoked. PluginAuth values
+ * are encrypted, so this deliberately scans only the two reserved mapping
+ * fields under a system context and decrypts them in process.
+ *
+ * A corrupt row is treated as a live reference: leaking an orphaned service
+ * tenant is safer than deleting credentials or cached data another user may
+ * still depend on.
+ */
+async function getCourseWingTenantReferenceStatus(tenantId, excludedUserId) {
+  if (!isValidCourseWingTenantId(tenantId)) {
+    throw new Error('Invalid Canvas tenant id');
+  }
+  const PluginAuth = mongoose.models.PluginAuth;
+  if (!PluginAuth) {
+    throw new Error('PluginAuth model is not initialized');
+  }
+  const mappingRows = await runAsSystem(async () =>
+    PluginAuth.find(
+      {
+        authField: { $in: [CANVAS_TENANT_FIELD, LEGACY_CANVAS_TENANT_FIELD] },
+        ...(excludedUserId ? { userId: { $ne: String(excludedUserId) } } : {}),
+      },
+      'value',
+    ).lean(),
+  );
+  let hasIndeterminateMapping = false;
+  for (const mapping of mappingRows) {
+    let mappedTenantId;
+    try {
+      mappedTenantId = await decrypt(mapping.value);
+    } catch (error) {
+      logger.warn(
+        `[CourseWing] Preserving Canvas tenant ${tenantId} because a stored mapping ` +
+          `could not be decrypted: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      hasIndeterminateMapping = true;
+      continue;
+    }
+    if (mappedTenantId === tenantId) {
+      return 'referenced';
+    }
+    if (mappedTenantId != null && !isValidCourseWingTenantId(mappedTenantId)) {
+      logger.warn(
+        `[CourseWing] Preserving Canvas tenant ${tenantId} because a stored mapping ` +
+          'contains an invalid tenant id',
+      );
+      hasIndeterminateMapping = true;
+    }
+  }
+  return hasIndeterminateMapping ? 'indeterminate' : 'unreferenced';
+}
+
+async function hasOtherCourseWingTenantReference(tenantId, excludedUserId) {
+  return (await getCourseWingTenantReferenceStatus(tenantId, excludedUserId)) !== 'unreferenced';
 }
 
 /** Resolves one explicit tenant or the environment-backed default without exposing a bearer. */
@@ -73,7 +261,7 @@ async function resolveCourseWingCanvasIdentity(requestedTenantId, allowDefaultFa
     if (requestedTenantId && status.status === 404 && allowDefaultFallback) {
       return resolveCourseWingCanvasIdentity(null);
     }
-    throw new Error(`Canvas tenant status failed with ${status.status}`);
+    throw new CanvasTenantStatusError(status.status);
   }
   const tenantId = status.body?.tenantId;
   if (!isValidCourseWingTenantId(tenantId)) {
@@ -96,7 +284,46 @@ async function resolveCourseWingCanvasIdentity(requestedTenantId, allowDefaultFa
  * environment account. The returned tenant id never leaves the trusted server boundary.
  */
 async function getCourseWingCanvasIdentity(userId) {
-  return resolveCourseWingCanvasIdentity(await getCourseWingTenantId(userId));
+  await assertNoPendingCourseWingDisconnect(userId);
+  const mappedTenantId = await getCourseWingTenantId(userId);
+  const identity = await resolveCourseWingCanvasIdentity(mappedTenantId);
+  await assertNoPendingCourseWingDisconnect(userId);
+  await assertCourseWingTenantUnchanged(userId, mappedTenantId);
+  return identity;
+}
+
+async function assertCourseWingTenantUnchanged(userId, expectedTenantId) {
+  if ((await getCourseWingTenantId(userId)) === expectedTenantId) {
+    return;
+  }
+  const error = new Error('Canvas account changed while resolving its identity');
+  error.code = 'COURSEWING_TENANT_CHANGED';
+  throw error;
+}
+
+async function assertNoPendingCourseWingDisconnect(userId) {
+  if (!userId) {
+    return;
+  }
+  const raw = await getOptionalUserPluginAuthValue(
+    userId,
+    CANVAS_PENDING_REVOCATION_FIELD,
+    COURSEWING_PLUGIN_KEY,
+  );
+  if (!raw) {
+    return;
+  }
+  try {
+    if (['disconnect', 'replacement', 'unlinked'].includes(JSON.parse(raw)?.type)) {
+      const error = new Error('Canvas connection cleanup is still pending');
+      error.code = 'COURSEWING_DISCONNECT_PENDING';
+      throw error;
+    }
+  } catch (error) {
+    if (error?.code === 'COURSEWING_DISCONNECT_PENDING') {
+      throw error;
+    }
+  }
 }
 
 function clearCourseWingCanvasIdentityCache(tenantId) {
@@ -110,6 +337,7 @@ function clearCourseWingCanvasIdentityCache(tenantId) {
   } else {
     canvasIdentityCache.clear();
   }
+  clearCourseWingFrozenNowCache(tenantId);
 }
 
 function visibleMessageText(message) {
@@ -457,34 +685,78 @@ function selectLegacyCanvasTenantId(mappings, conversationCreatedAt) {
 const FROZEN_NOW_CACHE_TTL_MS = 5 * 60_000;
 const frozenNowCache = new Map();
 
+function clearCourseWingFrozenNowCache(tenantId) {
+  if (tenantId) {
+    frozenNowCache.delete(tenantId);
+  } else {
+    frozenNowCache.clear();
+  }
+}
+
 /**
  * The demo tenant carries a frozen clock; the tutor's "Today's date" must match it
  * or the model asks for date windows the data can't satisfy. Null for real tenants.
  */
-async function getCourseWingFrozenNow(userId) {
+async function getCourseWingCanvasContext(userId) {
+  await assertNoPendingCourseWingDisconnect(userId);
+  const mappedTenantId = await getCourseWingTenantId(userId);
+  let identity;
   try {
-    const tenantId = await getCourseWingTenantId(userId);
-    if (!tenantId) {
-      return null;
-    }
-    const cached = frozenNowCache.get(tenantId);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.value;
-    }
-    const { ok, body } = await serviceFetch(`/api/coursewing/tenants/${tenantId}`, {
-      headers: { 'X-Tenant-Id': tenantId },
-    });
-    let value = null;
-    if (ok && typeof body?.frozenNow === 'string') {
-      const parsed = new Date(body.frozenNow);
-      value = Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-    frozenNowCache.set(tenantId, { value, expiresAt: Date.now() + FROZEN_NOW_CACHE_TTL_MS });
-    return value;
+    identity = await resolveCourseWingCanvasIdentity(mappedTenantId);
   } catch (error) {
-    logger.warn(`[CourseWing] Frozen-clock lookup failed: ${error?.message ?? error}`);
-    return null;
+    // A confirmed missing default tenant is normal only when the user had no
+    // stored mapping. If a persisted tenant disappeared (and no default can
+    // replace it), fail closed so that account never silently uses host time.
+    if (
+      mappedTenantId == null &&
+      error instanceof CanvasTenantStatusError &&
+      (error.status === 404 || error.status === 503)
+    ) {
+      await assertNoPendingCourseWingDisconnect(userId);
+      await assertCourseWingTenantUnchanged(userId, mappedTenantId);
+      return { identity: null, frozenNow: null };
+    }
+    throw error;
   }
+  const tenantId = identity?.tenantId;
+  if (!tenantId) {
+    await assertNoPendingCourseWingDisconnect(userId);
+    await assertCourseWingTenantUnchanged(userId, mappedTenantId);
+    return { identity: null, frozenNow: null };
+  }
+  const cached = frozenNowCache.get(tenantId);
+  if (cached && cached.expiresAt > Date.now()) {
+    await assertNoPendingCourseWingDisconnect(userId);
+    await assertCourseWingTenantUnchanged(userId, mappedTenantId);
+    return { identity, frozenNow: cached.value };
+  }
+  const { ok, status, body } = await serviceFetch(`/api/coursewing/tenants/${tenantId}`, {
+    headers: { 'X-Tenant-Id': tenantId },
+  });
+  if (!ok) {
+    throw new Error(`Canvas frozen-clock lookup failed with ${status}`);
+  }
+  let value = null;
+  if (body?.frozenNow != null) {
+    if (typeof body.frozenNow !== 'string') {
+      throw new Error('Canvas service returned an invalid frozen clock');
+    }
+    const parsed = new Date(body.frozenNow);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error('Canvas service returned an invalid frozen clock');
+    }
+    value = parsed;
+  }
+  // Do not let an in-flight clock lookup repopulate the cache after a
+  // concurrent disconnect has persisted its durable cleanup intent.
+  await assertNoPendingCourseWingDisconnect(userId);
+  await assertCourseWingTenantUnchanged(userId, mappedTenantId);
+  frozenNowCache.set(tenantId, { value, expiresAt: Date.now() + FROZEN_NOW_CACHE_TTL_MS });
+  return { identity, frozenNow: value };
+}
+
+async function getCourseWingFrozenNow(userId) {
+  return (await getCourseWingCanvasContext(userId)).frozenNow;
 }
 
 /** Removes Canvas bearer copies left by older CourseWing builds; tenant ids are retained. */
@@ -508,6 +780,11 @@ module.exports = {
   backfillCourseChats,
   purgeLegacyCanvasTokens,
   getCourseWingTenantId,
+  assertNoPendingCourseWingDisconnect,
+  acquireCourseWingMutationLease,
+  getCourseWingTenantReferenceStatus,
+  hasOtherCourseWingTenantReference,
+  getCourseWingCanvasContext,
   getCourseWingFrozenNow,
   getCourseWingCanvasIdentity,
   clearCourseWingCanvasIdentityCache,

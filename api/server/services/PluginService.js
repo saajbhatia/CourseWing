@@ -56,6 +56,25 @@ const getUserPluginAuthValue = async (userId, authField, throwError = true, plug
   }
 };
 
+/**
+ * Reads an optional auth value without conflating an absent row with database
+ * or decryption failures. Security-sensitive callers must fail closed on the
+ * latter while still accepting a user who has no configured value.
+ */
+const getOptionalUserPluginAuthValue = async (userId, authField, pluginKey) => {
+  try {
+    const searchParams = { userId, authField };
+    if (pluginKey) {
+      searchParams.pluginKey = pluginKey;
+    }
+    const pluginAuth = await findOnePluginAuth(searchParams);
+    return pluginAuth ? await decrypt(pluginAuth.value) : null;
+  } catch (err) {
+    logger.error('[getOptionalUserPluginAuthValue]', err);
+    throw err;
+  }
+};
+
 // const updateUserPluginAuth = async (userId, authField, pluginKey, value) => {
 //   try {
 //     const encryptedValue = encrypt(value);
@@ -134,6 +153,7 @@ const deleteUserPluginAuth = async (userId, authField, all = false, pluginKey) =
 
 module.exports = {
   getUserPluginAuthValue,
+  getOptionalUserPluginAuthValue,
   updateUserPluginAuth,
   deleteUserPluginAuth,
 };
