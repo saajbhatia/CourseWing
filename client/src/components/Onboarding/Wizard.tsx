@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AxiosError } from 'axios';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Input, Button, Spinner, useToastContext } from '@librechat/client';
+import { Input, Button, Spinner, GoogleIcon, useToastContext } from '@librechat/client';
 import {
   Link2,
   Loader2,
   BookOpen,
+  ArrowLeft,
   ExternalLink,
   GraduationCap,
   ShieldCheck,
@@ -23,10 +24,11 @@ import {
 import type { CanvasSchool } from '~/data-provider/CourseWing';
 import { useLocalize, useAuthContext } from '~/hooks';
 import { markOnboarded } from './state';
+import CanvasIcon from './CanvasIcon';
 
-type Step = 'welcome' | 'connect' | 'sync';
+type Step = 'welcome' | 'connect' | 'canvas' | 'sync';
 
-const STEPS: Step[] = ['welcome', 'connect', 'sync'];
+const DOT_STEPS = ['welcome', 'connect', 'sync'] as const;
 
 const FAILED_OUTCOMES = new Set(['denied', 'error', 'invalid', 'retry']);
 
@@ -44,6 +46,16 @@ function initialStep(outcome: string | null): Step {
 function canvasTokenUrl(domain: string): string {
   const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   return `https://${host}/profile/settings#:~:text=New%20Access%20Token`;
+}
+
+/** A pasted Canvas web address in the search box becomes a selectable option, replacing a manual-entry field. */
+function domainCandidate(query: string): string | null {
+  const host = query
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(host) ? host : null;
 }
 
 function connectErrorMessage(error: unknown, fallback: string): string {
@@ -79,10 +91,10 @@ function ValueRow({
 }
 
 function StepDots({ step }: { step: Step }) {
-  const activeIndex = STEPS.indexOf(step);
+  const activeIndex = step === 'canvas' ? 1 : DOT_STEPS.indexOf(step as (typeof DOT_STEPS)[number]);
   return (
     <div className="flex items-center gap-1.5" aria-hidden="true">
-      {STEPS.map((name, index) => (
+      {DOT_STEPS.map((name, index) => (
         <span
           key={name}
           className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -104,9 +116,7 @@ export default function Wizard() {
   const outcome = searchParams.get('classroom');
   const [step, setStep] = useState<Step>(() => initialStep(outcome));
   const [token, setToken] = useState('');
-  const [domain, setDomain] = useState('');
   const [school, setSchool] = useState<CanvasSchool | null>(null);
-  const [manualDomain, setManualDomain] = useState(false);
   const [schoolQuery, setSchoolQuery] = useState('');
   const [debouncedSchoolQuery, setDebouncedSchoolQuery] = useState('');
 
@@ -180,7 +190,7 @@ export default function Wizard() {
     });
   };
 
-  const canvasBaseUrl = manualDomain ? domain.trim() : (school?.domain ?? '');
+  const canvasBaseUrl = school?.domain ?? '';
   const canConnectCanvas = token.trim().length > 0 && canvasBaseUrl.length > 0;
 
   const handleCanvasConnect = () => {
@@ -192,7 +202,6 @@ export default function Wizard() {
       {
         onSuccess: () => {
           setToken('');
-          setDomain('');
           setStep('sync');
         },
         onError: (error) => {
@@ -247,6 +256,9 @@ export default function Wizard() {
     </>
   );
 
+  const providerButtonClass =
+    'flex w-full items-center justify-center gap-3 rounded-2xl border border-border-light bg-surface-primary px-5 py-3.5 text-sm font-medium text-text-primary transition-colors duration-200 hover:bg-surface-tertiary disabled:cursor-not-allowed disabled:opacity-60';
+
   const connectStep = (
     <>
       <h1 className="text-2xl font-semibold text-text-primary">
@@ -255,48 +267,66 @@ export default function Wizard() {
       <p className="mt-2 text-sm text-text-secondary">
         {localize('com_ui_onboarding_connect_subtitle')}
       </p>
-      <div className="mt-6 flex w-full flex-col gap-4 rounded-xl border border-border-light bg-surface-primary p-4 text-left">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-text-primary">
-            {localize('com_ui_classroom_source_label')}
-          </span>
-          <span className="text-sm text-text-secondary">
-            {localize('com_ui_onboarding_google_desc')}
-          </span>
-        </div>
-        <Button
+      <div className="mt-8 flex w-full flex-col gap-3">
+        <button
+          type="button"
           onClick={handleGoogleConnect}
           disabled={googleMutation.isLoading}
-          aria-label={localize('com_ui_classroom_connect')}
+          className={providerButtonClass}
         >
           {googleMutation.isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
           ) : (
-            <Link2 className="h-4 w-4" aria-hidden="true" />
+            <GoogleIcon />
           )}
           {localize('com_ui_classroom_connect')}
-        </Button>
+        </button>
+        <button type="button" onClick={() => setStep('canvas')} className={providerButtonClass}>
+          <CanvasIcon />
+          {localize('com_ui_onboarding_connect_canvas')}
+        </button>
       </div>
-      <div className="mt-4 flex w-full flex-col gap-3 rounded-xl border border-border-light bg-surface-primary p-4 text-left">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-text-primary">Canvas</span>
-          <span className="text-sm text-text-secondary">
-            {localize('com_ui_onboarding_canvas_desc')}
-          </span>
-        </div>
-        {school == null && !manualDomain && (
+      {skipLink}
+    </>
+  );
+
+  const searchResults = schoolSearch.data ?? [];
+  const pastedDomain = domainCandidate(debouncedSchoolQuery);
+  const searchActive = debouncedSchoolQuery.trim().length >= 3;
+
+  const canvasStep = (
+    <>
+      <h1 className="text-2xl font-semibold text-text-primary">
+        {localize('com_ui_onboarding_connect_canvas')}
+      </h1>
+      <p className="mt-2 text-sm text-text-secondary">
+        {localize('com_ui_onboarding_canvas_desc')}
+      </p>
+      <div className="mt-6 flex w-full flex-col gap-3 text-left">
+        {school == null && (
           <div className="flex flex-col gap-2">
             <Input
               type="text"
               value={schoolQuery}
               onChange={(event) => setSchoolQuery(event.target.value)}
               placeholder={localize('com_ui_onboarding_school_search')}
-              className="h-9"
+              className="h-10"
               aria-label={localize('com_ui_onboarding_school_search')}
             />
-            {(schoolSearch.data?.length ?? 0) > 0 && debouncedSchoolQuery.trim().length >= 3 && (
+            {searchActive && (searchResults.length > 0 || pastedDomain != null) && (
               <div className="flex max-h-56 flex-col overflow-y-auto rounded-lg border border-border-light">
-                {schoolSearch.data?.map((result) => (
+                {pastedDomain != null && (
+                  <button
+                    type="button"
+                    onClick={() => setSchool({ id: 0, name: pastedDomain, domain: pastedDomain })}
+                    className="flex flex-col border-b border-border-light px-3 py-2 text-left last:border-b-0 hover:bg-surface-tertiary"
+                  >
+                    <span className="text-sm text-text-primary">
+                      {localize('com_ui_onboarding_school_use_domain', { 0: pastedDomain })}
+                    </span>
+                  </button>
+                )}
+                {searchResults.map((result) => (
                   <button
                     key={result.id}
                     type="button"
@@ -309,9 +339,10 @@ export default function Wizard() {
                 ))}
               </div>
             )}
-            {debouncedSchoolQuery.trim().length >= 3 &&
+            {searchActive &&
               !schoolSearch.isFetching &&
-              schoolSearch.data?.length === 0 && (
+              searchResults.length === 0 &&
+              pastedDomain == null && (
                 <div className="flex flex-col gap-1 rounded-lg border border-border-light bg-surface-secondary px-3 py-2 text-xs text-text-secondary">
                   <span className="font-medium text-text-primary">
                     {localize('com_ui_onboarding_school_none_title')}
@@ -323,38 +354,18 @@ export default function Wizard() {
                   </ul>
                 </div>
               )}
-            <button
-              type="button"
-              onClick={() => setManualDomain(true)}
-              className="self-start text-xs text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
-            >
-              {localize('com_ui_onboarding_school_manual')}
-            </button>
           </div>
         )}
         {school != null && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-border-light px-3 py-2">
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-sm text-text-primary">{school.name}</span>
-              <span className="truncate text-xs text-text-secondary">{school.domain}</span>
+              {school.name !== school.domain && (
+                <span className="truncate text-xs text-text-secondary">{school.domain}</span>
+              )}
             </div>
             <Button size="sm" variant="outline" onClick={() => setSchool(null)}>
               {localize('com_ui_onboarding_school_change')}
-            </Button>
-          </div>
-        )}
-        {manualDomain && school == null && (
-          <div className="flex items-center gap-2">
-            <Input
-              type="text"
-              value={domain}
-              onChange={(event) => setDomain(event.target.value)}
-              placeholder={localize('com_ui_canvas_domain_placeholder')}
-              className="h-9 flex-1"
-              aria-label={localize('com_ui_canvas_domain_placeholder')}
-            />
-            <Button size="sm" variant="outline" onClick={() => setManualDomain(false)}>
-              {localize('com_ui_onboarding_school_search_instead')}
             </Button>
           </div>
         )}
@@ -369,7 +380,7 @@ export default function Wizard() {
             {localize('com_ui_onboarding_canvas_open_settings')}
           </a>
         )}
-        {(school != null || manualDomain) && (
+        {school != null && (
           <div className="flex items-center gap-2">
             <Input
               type="password"
@@ -399,7 +410,7 @@ export default function Wizard() {
             </Button>
           </div>
         )}
-        {(school != null || manualDomain) && (
+        {school != null && (
           <details className="text-sm">
             <summary className="cursor-pointer text-text-secondary hover:text-text-primary">
               {localize('com_ui_onboarding_canvas_help_title')}
@@ -413,7 +424,14 @@ export default function Wizard() {
           </details>
         )}
       </div>
-      {skipLink}
+      <button
+        type="button"
+        onClick={() => setStep('connect')}
+        className="mt-6 flex items-center gap-1 text-sm text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        {localize('com_ui_onboarding_back')}
+      </button>
     </>
   );
 
@@ -500,6 +518,7 @@ export default function Wizard() {
         </div>
         {step === 'welcome' && welcomeStep}
         {step === 'connect' && connectStep}
+        {step === 'canvas' && canvasStep}
         {step === 'sync' && syncStep}
       </div>
     </main>
