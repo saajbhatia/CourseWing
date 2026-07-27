@@ -101,7 +101,10 @@ export default function Tour() {
         }
         return;
       }
-      // Anchors can mount a beat after a navigation; only skip after repeated misses.
+      // Hide the spotlight as soon as its anchor is gone; a stale highlight over
+      // fresh content looks broken. Skipping ahead still waits a few misses since
+      // anchors can mount a beat after a navigation.
+      setRect(null);
       missCountRef.current += 1;
       if (missCountRef.current < 4) {
         return;
@@ -125,6 +128,29 @@ export default function Tour() {
       window.removeEventListener('resize', measure);
     };
   }, [active, stopIndex, userId]);
+
+  /** Clicking the highlighted element itself completes the stop immediately. */
+  useEffect(() => {
+    if (!active || rect == null) {
+      return;
+    }
+    const element = document.querySelector(`[data-tour="${STOPS[stopIndex].anchor}"]`);
+    if (element == null) {
+      return;
+    }
+    const onAnchorClick = () => {
+      missCountRef.current = 0;
+      setRect(null);
+      if (stopIndex + 1 < STOPS.length) {
+        setStopIndex(stopIndex + 1);
+      } else {
+        markToured(userId);
+        setDismissed(true);
+      }
+    };
+    element.addEventListener('click', onAnchorClick, true);
+    return () => element.removeEventListener('click', onAnchorClick, true);
+  }, [active, rect, stopIndex, userId]);
 
   if (!active || rect == null) {
     return null;
