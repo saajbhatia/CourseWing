@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { EModelEndpoint, Constants } from 'librechat-data-provider';
+import { EModelEndpoint, Constants, getConversationCourseId } from 'librechat-data-provider';
 import {
   useGetAssistantDocsQuery,
   useGetEndpointsQuery,
@@ -58,10 +58,19 @@ const ConversationStarters = () => {
     [conversation?.spec, startupConfig],
   );
 
+  const conversationCourseId = getConversationCourseId(conversation);
+
   /** Starters grounded in the student's real synced classes beat static prompts. */
   const courseWingStarters = useMemo(() => {
     if (startupConfig?.courseWingEnabled !== true || courses == null || courses.length === 0) {
       return [];
+    }
+    if (conversationCourseId != null) {
+      return [
+        localize('com_ui_starter_review'),
+        localize('com_ui_starter_course_due'),
+        localize('com_ui_starter_course_grade'),
+      ];
     }
     return [
       localize('com_ui_starter_due_week'),
@@ -70,7 +79,7 @@ const ConversationStarters = () => {
         .map((course) => localize('com_ui_starter_study_course', { 0: shortCourseName(course.name) })),
       localize('com_ui_starter_grades'),
     ];
-  }, [startupConfig?.courseWingEnabled, courses, localize]);
+  }, [startupConfig?.courseWingEnabled, courses, conversationCourseId, localize]);
 
   const conversation_starters = useMemo(() => {
     if (entity?.conversation_starters?.length) {
@@ -109,6 +118,7 @@ const ConversationStarters = () => {
         .map((text: string, index: number) => (
           <button
             key={index}
+            data-tour={conversationCourseId != null && index === 0 ? 'review' : undefined}
             onClick={() => sendConversationStarter(text)}
             style={{ animationDelay: `${index * 75}ms`, animationFillMode: 'backwards' }}
             className="flex max-w-[16rem] cursor-pointer items-center justify-center rounded-2xl border border-border-medium bg-surface-secondary px-4 py-2.5 text-center text-sm text-text-secondary shadow-sm transition-colors duration-200 fade-in hover:border-border-heavy hover:bg-surface-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"

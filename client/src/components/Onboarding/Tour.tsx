@@ -1,17 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@librechat/client';
+import { usePendingCourse } from '~/components/CourseWing/utils';
 import { useCanvasConnectionQuery } from '~/data-provider/CourseWing';
 import { useLocalize, useAuthContext } from '~/hooks';
 import { hasOnboarded, hasToured, markToured } from './state';
 
 type TourStop = {
   anchor: string;
-  titleKey: 'com_ui_tour_courses_title' | 'com_ui_tour_persona_title';
-  descKey: 'com_ui_tour_courses_desc' | 'com_ui_tour_persona_desc';
+  titleKey: 'com_ui_tour_courses_title' | 'com_ui_tour_review_title' | 'com_ui_tour_persona_title';
+  descKey: 'com_ui_tour_courses_desc' | 'com_ui_tour_review_desc' | 'com_ui_tour_persona_desc';
+  /** The stop advances by the student doing the action, not by clicking Next. */
+  interactive?: boolean;
 };
 
 const STOPS: TourStop[] = [
-  { anchor: 'courses', titleKey: 'com_ui_tour_courses_title', descKey: 'com_ui_tour_courses_desc' },
+  {
+    anchor: 'courses',
+    titleKey: 'com_ui_tour_courses_title',
+    descKey: 'com_ui_tour_courses_desc',
+    interactive: true,
+  },
+  { anchor: 'review', titleKey: 'com_ui_tour_review_title', descKey: 'com_ui_tour_review_desc' },
   { anchor: 'persona', titleKey: 'com_ui_tour_persona_title', descKey: 'com_ui_tour_persona_desc' },
 ];
 
@@ -41,8 +51,24 @@ export default function Tour() {
   const [stopIndex, setStopIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const location = useLocation();
+  const pendingCourse = usePendingCourse();
+  const initialPendingCourse = useRef(pendingCourse);
+  const missCountRef = useRef(0);
 
   const userId = user?.id;
+
+  /** Stop 1 is completed by actually opening a class (its course page, or a course chat). */
+  const openedCourse =
+    location.pathname.includes('/courses/') ||
+    (pendingCourse != null && pendingCourse !== initialPendingCourse.current);
+  useEffect(() => {
+    if (stopIndex === 0 && !dismissed && openedCourse) {
+      setRect(null);
+      missCountRef.current = 0;
+      setStopIndex(1);
+    }
+  }, [openedCourse, stopIndex, dismissed]);
   const active =
     !dismissed &&
     isAuthenticated &&
@@ -59,23 +85,33 @@ export default function Tour() {
     }
     let index = stopIndex;
     const measure = () => {
-      while (index < STOPS.length) {
-        const next = anchorRect(STOPS[index].anchor);
-        if (next != null) {
-          setRect((prev) =>
-            prev != null &&
-            Math.abs(prev.top - next.top) < 1 &&
-            Math.abs(prev.left - next.left) < 1 &&
-            Math.abs(prev.width - next.width) < 1
-              ? prev
-              : next,
-          );
-          if (index !== stopIndex) {
-            setStopIndex(index);
-          }
-          return;
+      const next = anchorRect(STOPS[index].anchor);
+      if (next != null) {
+        missCountRef.current = 0;
+        setRect((prev) =>
+          prev != null &&
+          Math.abs(prev.top - next.top) < 1 &&
+          Math.abs(prev.left - next.left) < 1 &&
+          Math.abs(prev.width - next.width) < 1
+            ? prev
+            : next,
+        );
+        if (index !== stopIndex) {
+          setStopIndex(index);
         }
+        return;
+      }
+      // Anchors can mount a beat after a navigation; only skip after repeated misses.
+      missCountRef.current += 1;
+      if (missCountRef.current < 4) {
+        return;
+      }
+      missCountRef.current = 0;
+      if (index + 1 < STOPS.length) {
         index += 1;
+        setRect(null);
+        setStopIndex(index);
+        return;
       }
       setDismissed(true);
       markToured(userId);
@@ -119,14 +155,17 @@ export default function Tour() {
   const tooltipLeft = Math.max(12, Math.min(rect.left, innerWidth - TOOLTIP_WIDTH - 12));
 
   return (
-    <div className="fixed inset-0 z-[1000]" role="dialog" aria-label={localize(stop.titleKey)}>
+    <div
+      className="pointer-events-none fixed inset-0 z-[1000]"
+      role="dialog"
+      aria-label={localize(stop.titleKey)}
+    >
       <div
         className="absolute rounded-xl transition-all duration-300"
         style={{ top, left, width, height, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.55)' }}
-        onClick={finish}
       />
       <div
-        className="absolute flex flex-col gap-2 rounded-xl border border-border-light bg-surface-primary p-4 shadow-lg"
+        className="pointer-events-auto absolute flex flex-col gap-2 rounded-xl border border-border-light bg-surface-primary p-4 shadow-lg"
         style={{
           width: TOOLTIP_WIDTH,
           left: tooltipLeft,
@@ -147,9 +186,11 @@ export default function Tour() {
             <span className="text-xs text-text-tertiary">
               {stopIndex + 1}/{STOPS.length}
             </span>
-            <Button size="sm" onClick={advance}>
-              {isLast ? localize('com_ui_tour_done') : localize('com_ui_tour_next')}
-            </Button>
+            {!stop.interactive && (
+              <Button size="sm" onClick={advance}>
+                {isLast ? localize('com_ui_tour_done') : localize('com_ui_tour_next')}
+              </Button>
+            )}
           </div>
         </div>
       </div>
