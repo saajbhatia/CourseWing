@@ -16,8 +16,10 @@ import {
   useCanvasConnectionQuery,
   useConnectCanvasMutation,
   useCurrentCoursesQuery,
+  useCanvasSchoolSearchQuery,
   useConnectGoogleClassroomMutation,
 } from '~/data-provider/CourseWing';
+import type { CanvasSchool } from '~/data-provider/CourseWing';
 import { useLocalize, useAuthContext } from '~/hooks';
 import { markOnboarded } from './state';
 
@@ -96,6 +98,16 @@ export default function Wizard() {
   const [step, setStep] = useState<Step>(() => initialStep(outcome));
   const [token, setToken] = useState('');
   const [domain, setDomain] = useState('');
+  const [school, setSchool] = useState<CanvasSchool | null>(null);
+  const [manualDomain, setManualDomain] = useState(false);
+  const [schoolQuery, setSchoolQuery] = useState('');
+  const [debouncedSchoolQuery, setDebouncedSchoolQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSchoolQuery(schoolQuery), 300);
+    return () => clearTimeout(timer);
+  }, [schoolQuery]);
+  const schoolSearch = useCanvasSchoolSearchQuery(debouncedSchoolQuery);
 
   const connection = useCanvasConnectionQuery({ enabled: isAuthenticated && !isGuest });
   const courses = useCurrentCoursesQuery();
@@ -161,12 +173,15 @@ export default function Wizard() {
     });
   };
 
+  const canvasBaseUrl = manualDomain ? domain.trim() : (school?.domain ?? '');
+  const canConnectCanvas = token.trim().length > 0 && canvasBaseUrl.length > 0;
+
   const handleCanvasConnect = () => {
-    if (!token.trim()) {
+    if (!canConnectCanvas) {
       return;
     }
     connectMutation.mutate(
-      { token: token.trim(), baseUrl: domain.trim() || undefined },
+      { token: token.trim(), baseUrl: canvasBaseUrl },
       {
         onSuccess: () => {
           setToken('');
@@ -262,53 +277,116 @@ export default function Wizard() {
             {localize('com_ui_onboarding_canvas_desc')}
           </span>
         </div>
-        <Input
-          type="text"
-          value={domain}
-          onChange={(event) => setDomain(event.target.value)}
-          placeholder={localize('com_ui_canvas_domain_placeholder')}
-          className="h-9"
-          aria-label={localize('com_ui_canvas_domain_placeholder')}
-        />
-        <div className="flex items-center gap-2">
-          <Input
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder={localize('com_ui_canvas_token_placeholder')}
-            className="h-9 flex-1"
-            aria-label={localize('com_ui_canvas_token_placeholder')}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                handleCanvasConnect();
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            onClick={handleCanvasConnect}
-            disabled={!token.trim() || connectMutation.isLoading}
-            aria-label={localize('com_ui_canvas_connect')}
-          >
-            {connectMutation.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Link2 className="h-4 w-4" aria-hidden="true" />
+        {school == null && !manualDomain && (
+          <div className="flex flex-col gap-2">
+            <Input
+              type="text"
+              value={schoolQuery}
+              onChange={(event) => setSchoolQuery(event.target.value)}
+              placeholder={localize('com_ui_onboarding_school_search')}
+              className="h-9"
+              aria-label={localize('com_ui_onboarding_school_search')}
+            />
+            {(schoolSearch.data?.length ?? 0) > 0 && debouncedSchoolQuery.trim().length >= 3 && (
+              <div className="flex max-h-56 flex-col overflow-y-auto rounded-lg border border-border-light">
+                {schoolSearch.data?.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onClick={() => setSchool(result)}
+                    className="flex flex-col border-b border-border-light px-3 py-2 text-left last:border-b-0 hover:bg-surface-tertiary"
+                  >
+                    <span className="text-sm text-text-primary">{result.name}</span>
+                    <span className="text-xs text-text-secondary">{result.domain}</span>
+                  </button>
+                ))}
+              </div>
             )}
-            {localize('com_ui_canvas_connect')}
-          </Button>
-        </div>
-        <details className="text-sm">
-          <summary className="cursor-pointer text-text-secondary hover:text-text-primary">
-            {localize('com_ui_onboarding_canvas_help_title')}
-          </summary>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-text-secondary">
-            <li>{localize('com_ui_onboarding_canvas_help_step1')}</li>
-            <li>{localize('com_ui_onboarding_canvas_help_step2')}</li>
-            <li>{localize('com_ui_onboarding_canvas_help_step3')}</li>
-            <li>{localize('com_ui_onboarding_canvas_help_step4')}</li>
-          </ol>
-        </details>
+            {debouncedSchoolQuery.trim().length >= 3 &&
+              !schoolSearch.isFetching &&
+              schoolSearch.data?.length === 0 && (
+                <span className="text-xs text-text-secondary">
+                  {localize('com_ui_onboarding_school_none')}
+                </span>
+              )}
+            <button
+              type="button"
+              onClick={() => setManualDomain(true)}
+              className="self-start text-xs text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+            >
+              {localize('com_ui_onboarding_school_manual')}
+            </button>
+          </div>
+        )}
+        {school != null && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border-light px-3 py-2">
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm text-text-primary">{school.name}</span>
+              <span className="truncate text-xs text-text-secondary">{school.domain}</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setSchool(null)}>
+              {localize('com_ui_onboarding_school_change')}
+            </Button>
+          </div>
+        )}
+        {manualDomain && school == null && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="text"
+              value={domain}
+              onChange={(event) => setDomain(event.target.value)}
+              placeholder={localize('com_ui_canvas_domain_placeholder')}
+              className="h-9 flex-1"
+              aria-label={localize('com_ui_canvas_domain_placeholder')}
+            />
+            <Button size="sm" variant="outline" onClick={() => setManualDomain(false)}>
+              {localize('com_ui_onboarding_school_search_instead')}
+            </Button>
+          </div>
+        )}
+        {(school != null || manualDomain) && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder={localize('com_ui_canvas_token_placeholder')}
+              className="h-9 flex-1"
+              aria-label={localize('com_ui_canvas_token_placeholder')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleCanvasConnect();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              onClick={handleCanvasConnect}
+              disabled={!canConnectCanvas || connectMutation.isLoading}
+              aria-label={localize('com_ui_canvas_connect')}
+            >
+              {connectMutation.isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Link2 className="h-4 w-4" aria-hidden="true" />
+              )}
+              {localize('com_ui_canvas_connect')}
+            </Button>
+          </div>
+        )}
+        {(school != null || manualDomain) && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-text-secondary hover:text-text-primary">
+              {localize('com_ui_onboarding_canvas_help_title')}
+            </summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-text-secondary">
+              <li>{localize('com_ui_onboarding_canvas_help_step1')}</li>
+              <li>{localize('com_ui_onboarding_canvas_help_step2')}</li>
+              <li>{localize('com_ui_onboarding_canvas_help_step3')}</li>
+              <li>{localize('com_ui_onboarding_canvas_help_step4')}</li>
+            </ol>
+          </details>
+        )}
       </div>
       {skipLink}
     </>

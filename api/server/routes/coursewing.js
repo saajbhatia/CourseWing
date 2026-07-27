@@ -416,6 +416,34 @@ function sanitizeReturnOrigin(value) {
   }
 }
 
+const SCHOOL_SEARCH_URL = 'https://sso.canvaslms.com/api/v1/accounts/search';
+const MAX_SCHOOL_RESULTS = 12;
+
+/** Proxies Instructure's public school directory so students can find their Canvas domain by name. */
+router.get('/schools', requireJwtAuth, async (req, res) => {
+  const query = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+  if (query.length < 3) {
+    return res.json([]);
+  }
+  try {
+    const response = await fetch(`${SCHOOL_SEARCH_URL}?name=${encodeURIComponent(query)}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      return res.status(502).json({ message: 'School search is unavailable' });
+    }
+    const body = await response.json();
+    const schools = (Array.isArray(body) ? body : [])
+      .filter((school) => typeof school?.name === 'string' && typeof school?.domain === 'string')
+      .slice(0, MAX_SCHOOL_RESULTS)
+      .map((school) => ({ id: school.id, name: school.name, domain: school.domain }));
+    return res.json(schools);
+  } catch (error) {
+    logger.warn(`[coursewing/schools] Search failed: ${error?.message ?? error}`);
+    return res.status(502).json({ message: 'School search is unavailable' });
+  }
+});
+
 router.get('/google/auth-url', requireJwtAuth, async (req, res) => {
   try {
     const state = jwt.sign(

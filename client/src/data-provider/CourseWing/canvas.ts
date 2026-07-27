@@ -86,6 +86,27 @@ export function useCanvasConnectionQuery(options?: {
   );
 }
 
+export type CanvasSchool = {
+  id: number;
+  name: string;
+  domain: string;
+};
+
+/** Searches Instructure's public school directory (proxied server-side) by school name. */
+export function useCanvasSchoolSearchQuery(query: string): UseQueryResult<CanvasSchool[]> {
+  const trimmed = query.trim();
+  return useQuery<CanvasSchool[]>(
+    ['coursewing', 'school-search', trimmed.toLowerCase()],
+    () => request.get(`/api/coursewing/schools?q=${encodeURIComponent(trimmed)}`),
+    {
+      enabled: trimmed.length >= 3,
+      staleTime: 300000,
+      keepPreviousData: true,
+      retry: 1,
+    },
+  );
+}
+
 export type ConnectCanvasPayload = {
   token: string;
   baseUrl?: string;
