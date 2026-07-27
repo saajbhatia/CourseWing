@@ -7,6 +7,7 @@ import {
   Link2,
   Loader2,
   BookOpen,
+  ExternalLink,
   GraduationCap,
   ShieldCheck,
   CheckCircle2,
@@ -37,6 +38,12 @@ function initialStep(outcome: string | null): Step {
     return 'connect';
   }
   return 'welcome';
+}
+
+/** Deep link to Canvas's token page; the text fragment scrolls to and highlights the "New Access Token" button. */
+function canvasTokenUrl(domain: string): string {
+  const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  return `https://${host}/profile/settings#:~:text=New%20Access%20Token`;
 }
 
 function connectErrorMessage(error: unknown, fallback: string): string {
@@ -343,6 +350,17 @@ export default function Wizard() {
               {localize('com_ui_onboarding_school_search_instead')}
             </Button>
           </div>
+        )}
+        {canvasBaseUrl.length > 0 && (
+          <a
+            href={canvasTokenUrl(canvasBaseUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-lg border border-border-medium px-3 py-2 text-sm text-text-primary hover:bg-surface-tertiary"
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            {localize('com_ui_onboarding_canvas_open_settings')}
+          </a>
         )}
         {(school != null || manualDomain) && (
           <div className="flex items-center gap-2">
