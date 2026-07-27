@@ -23,5 +23,20 @@ describe('CourseWingIntro basename handling', () => {
       'src',
       '/chat/assets/coursewing/course-home.png',
     );
+
+    const fragmentLinks = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+      .filter((href): href is string => href?.includes('#') === true);
+    expect(fragmentLinks).toHaveLength(7);
+    expect(fragmentLinks.every((href) => href.startsWith('/chat/coursewing#'))).toBe(true);
+    expect(new Set(fragmentLinks)).toEqual(
+      new Set([
+        '/chat/coursewing#top',
+        '/chat/coursewing#why',
+        '/chat/coursewing#stories',
+        '/chat/coursewing#adapts',
+      ]),
+    );
   });
 });

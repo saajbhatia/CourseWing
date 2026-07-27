@@ -37,8 +37,6 @@ if (import.meta.hot) {
   import.meta.hot.data.__AuthContext = AuthContext;
 }
 
-const PRIOR_SESSION_KEY = 'hasPriorSession';
-
 /** Guest browsing is disabled — logged-out visitors are always sent to login. */
 const isGuestViewableRoute = () => false;
 
@@ -84,7 +82,6 @@ const AuthContextProvider = ({
         if (isAuthenticated) {
           setIsGuest(false);
           setQueriesEnabled(true);
-          localStorage.setItem(PRIOR_SESSION_KEY, '1');
         }
 
         const searchParams = new URLSearchParams(window.location.search);

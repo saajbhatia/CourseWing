@@ -1,7 +1,7 @@
 /* eslint-disable i18next/no-literal-string -- Static product marketing copy is intentionally authored here. */
 import { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useHref } from 'react-router-dom';
 import { apiBaseUrl } from 'librechat-data-provider';
 import './CourseWingIntro.css';
 
@@ -62,6 +62,8 @@ const proofPoints = [
 
 export default function CourseWingIntro() {
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
+  const courseWingPath = useHref('/coursewing');
+  const sectionHref = (id: string) => `${courseWingPath}#${id}`;
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -96,16 +98,16 @@ export default function CourseWingIntro() {
   return (
     <main className="ll-page">
       <header className="ll-nav-shell">
-        <a className="ll-wordmark" href="#top" aria-label="CourseWing home">
+        <a className="ll-wordmark" href={sectionHref('top')} aria-label="CourseWing home">
           <span className="ll-wordmark-mark" aria-hidden="true">
             L
           </span>
           <span>CourseWing</span>
         </a>
         <nav className="ll-nav-links" aria-label="Main navigation">
-          <a href="#why">Why it works</a>
-          <a href="#stories">Real use cases</a>
-          <a href="#adapts">Personalization</a>
+          <a href={sectionHref('why')}>Why it works</a>
+          <a href={sectionHref('stories')}>Real use cases</a>
+          <a href={sectionHref('adapts')}>Personalization</a>
         </nav>
         <Link className="ll-nav-cta" to="/login">
           Enter CourseWing <ArrowUpRight aria-hidden="true" />
@@ -123,7 +125,7 @@ export default function CourseWingIntro() {
             that already knows what matters next.
           </p>
           <div className="ll-hero-actions">
-            <a className="ll-button ll-button-primary" href="#stories">
+            <a className="ll-button ll-button-primary" href={sectionHref('stories')}>
               See it in action <ArrowRight aria-hidden="true" />
             </a>
             <Link className="ll-button ll-button-secondary" to="/login">
@@ -281,7 +283,7 @@ export default function CourseWingIntro() {
       </section>
 
       <footer className="ll-footer">
-        <a className="ll-wordmark" href="#top" aria-label="Back to top">
+        <a className="ll-wordmark" href={sectionHref('top')} aria-label="Back to top">
           <span className="ll-wordmark-mark" aria-hidden="true">
             L
           </span>
@@ -289,7 +291,7 @@ export default function CourseWingIntro() {
         </a>
         <p>The course-aware AI tutor.</p>
         <div>
-          <a href="#stories">Use cases</a>
+          <a href={sectionHref('stories')}>Use cases</a>
           <Link to="/login">Sign in</Link>
         </div>
       </footer>

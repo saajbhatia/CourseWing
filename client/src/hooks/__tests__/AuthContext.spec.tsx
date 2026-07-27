@@ -118,7 +118,7 @@ function renderProviderLive() {
   );
 }
 
-describe('AuthContextProvider — guest routes', () => {
+describe('AuthContextProvider — logged-out redirects', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
@@ -130,7 +130,7 @@ describe('AuthContextProvider — guest routes', () => {
   });
 
   it.each(['/', '/c/new'])(
-    'allows a first-time visitor to browse %s after refresh fails',
+    'redirects a first-time visitor from %s to login after refresh fails',
     (path) => {
       window.history.replaceState({}, '', path);
       const { getByTestId } = renderProviderLive();
@@ -143,8 +143,10 @@ describe('AuthContextProvider — guest routes', () => {
         refreshOptions.onError(new Error('No session'));
       });
 
-      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
-      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+      expect(mockNavigate).toHaveBeenCalledWith(
+        path === '/' ? '/login' : `/login?redirect_to=${encodeURIComponent(path)}`,
+      );
     },
   );
 
@@ -155,7 +157,7 @@ describe('AuthContextProvider — guest routes', () => {
     '/courses/0',
     '/courses/foo',
     '/courses/11464/extra',
-  ])('requires login for non-guest route %s', (path) => {
+  ])('redirects a logged-out visitor from %s to login', (path) => {
     window.history.replaceState({}, '', path);
     const { getByTestId } = renderProviderLive();
     const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
@@ -171,7 +173,7 @@ describe('AuthContextProvider — guest routes', () => {
     expect(mockNavigate).toHaveBeenCalled();
   });
 
-  it('allows a direct public course page for a first-time visitor', () => {
+  it('redirects a first-time visitor from a direct course page', () => {
     window.history.replaceState({}, '', '/courses/11464');
     const { getByTestId } = renderProviderLive();
     const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
@@ -183,12 +185,12 @@ describe('AuthContextProvider — guest routes', () => {
       refreshOptions.onError(new Error('No session'));
     });
 
-    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+    expect(mockNavigate).toHaveBeenCalledWith('/login?redirect_to=%2Fcourses%2F11464');
   });
 
   it.each(['/chat', '/chat/', '/chat/c/new', '/chat/courses/11464'])(
-    'allows exact guest route %s under a configured basename',
+    'redirects route %s under a configured basename to login',
     (path) => {
       mockApiBaseUrl.mockReturnValue('/chat');
       window.history.replaceState({}, '', path);
@@ -202,8 +204,9 @@ describe('AuthContextProvider — guest routes', () => {
         refreshOptions.onError(new Error('No session'));
       });
 
-      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
-      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+      expect(mockNavigate).toHaveBeenCalled();
+      expect(mockNavigate.mock.calls[0][0]).toMatch(/^\/login(?:\?|$)/);
       mockApiBaseUrl.mockReturnValue('');
     },
   );
@@ -226,7 +229,7 @@ describe('AuthContextProvider — guest routes', () => {
     mockApiBaseUrl.mockReturnValue('');
   });
 
-  it('redirects a returning visitor to login instead of entering guest mode', () => {
+  it('redirects a returning visitor to login', () => {
     localStorage.setItem('hasPriorSession', '1');
     window.history.replaceState({}, '', '/c/new');
     const { getByTestId } = renderProviderLive();
@@ -243,7 +246,7 @@ describe('AuthContextProvider — guest routes', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/login?redirect_to=%2Fc%2Fnew');
   });
 
-  it('keeps a public course page visible for a returning logged-out visitor', () => {
+  it('redirects a returning logged-out visitor from a course page', () => {
     localStorage.setItem('hasPriorSession', '1');
     window.history.replaceState({}, '', '/courses/11464');
     const { getByTestId } = renderProviderLive();
@@ -256,8 +259,8 @@ describe('AuthContextProvider — guest routes', () => {
       refreshOptions.onError(new Error('Expired session'));
     });
 
-    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('true');
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(getByTestId('consumer').getAttribute('data-guest')).toBe('false');
+    expect(mockNavigate).toHaveBeenCalledWith('/login?redirect_to=%2Fcourses%2F11464');
   });
 });
 
@@ -450,6 +453,42 @@ describe('AuthContextProvider — silentRefresh post-login redirect', () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/c/new', { replace: true });
+    jest.useRealTimers();
+  });
+
+  it('does not let unavailable localStorage writes abort a successful redirect', () => {
+    jest.useFakeTimers();
+    window.history.replaceState({}, '', '/c/new');
+    const storagePrototype = Object.getPrototypeOf(window.localStorage) as Storage;
+    const originalSetItem = storagePrototype.setItem;
+    const setItemSpy = jest.spyOn(storagePrototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (this !== window.localStorage) {
+        return originalSetItem.call(this, key, value);
+      }
+      throw new DOMException('Storage is disabled', 'SecurityError');
+    });
+
+    renderProviderLive();
+
+    const [, refreshOptions] = mockRefreshMutate.mock.calls[0] as [
+      unknown,
+      { onSuccess: (data: unknown) => void },
+    ];
+
+    act(() => {
+      refreshOptions.onSuccess({ user: { id: '1', role: 'USER' }, token: 'new-token' });
+    });
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/c/new', { replace: true });
+    setItemSpy.mockRestore();
     jest.useRealTimers();
   });
 
