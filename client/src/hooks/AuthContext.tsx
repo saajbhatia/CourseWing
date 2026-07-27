@@ -39,20 +39,8 @@ if (import.meta.hot) {
 
 const PRIOR_SESSION_KEY = 'hasPriorSession';
 
-/** Returning users get the classic redirect-to-login; only first-time visitors browse as guests. */
-const hasPriorSession = () => localStorage.getItem(PRIOR_SESSION_KEY) != null;
-
-/** Routes guests may view without a session; sending a message still requires login. */
-const isGuestViewableRoute = () => {
-  const rawPath = window.location.pathname;
-  const baseUrl = apiBaseUrl();
-  const path =
-    baseUrl && (rawPath === baseUrl || rawPath.startsWith(`${baseUrl}/`))
-      ? rawPath.slice(baseUrl.length) || '/'
-      : rawPath;
-  const isPublicCourse = /^\/courses\/[1-9]\d*$/u.test(path);
-  return isPublicCourse || ((path === '/' || path === '/c/new') && !hasPriorSession());
-};
+/** Guest browsing is disabled — logged-out visitors are always sent to login. */
+const isGuestViewableRoute = () => false;
 
 const AuthContextProvider = ({
   authConfig,
