@@ -1,5 +1,11 @@
 import { useMemo, useCallback } from 'react';
-import { EModelEndpoint, Constants, getConversationCourseId } from 'librechat-data-provider';
+import { useQuery } from '@tanstack/react-query';
+import {
+  EModelEndpoint,
+  Constants,
+  getConversationCourseId,
+  request,
+} from 'librechat-data-provider';
 import {
   useGetAssistantDocsQuery,
   useGetEndpointsQuery,
@@ -9,6 +15,7 @@ import { useChatContext, useAgentsMapContext, useAssistantsMapContext } from '~/
 import { getIconEndpoint, getEntity, getModelSpec } from '~/utils';
 import { useCurrentCoursesQuery } from '~/data-provider/CourseWing';
 import { useSubmitMessage, useLocalize } from '~/hooks';
+import { useAuthContext } from '~/hooks/AuthContext';
 
 /** Canvas course names carry section codes and year suffixes ("AP Calculus AB (LF) 25-26") that make chips wrap badly. */
 function shortCourseName(name: string): string {
@@ -28,6 +35,13 @@ const ConversationStarters = () => {
   const { data: endpointsConfig } = useGetEndpointsQuery();
   const { data: startupConfig } = useGetStartupConfig();
   const { data: courses } = useCurrentCoursesQuery();
+  const { isAuthenticated } = useAuthContext();
+  const teacherMe = useQuery(
+    ['tcMe'],
+    () => request.get<{ isTeacher: boolean }>('/api/coursewing/teacher/me'),
+    { enabled: isAuthenticated, retry: false, staleTime: 300_000 },
+  );
+  const isTeacher = teacherMe.data?.isTeacher === true;
 
   const endpointType = useMemo(() => {
     let ep = conversation?.endpoint ?? '';
@@ -60,9 +74,14 @@ const ConversationStarters = () => {
 
   const conversationCourseId = getConversationCourseId(conversation);
 
-  /** Starters grounded in the student's real synced classes beat static prompts. */
+  /** Starters grounded in the student's real synced classes beat static prompts. Teachers get none. */
   const courseWingStarters = useMemo(() => {
-    if (startupConfig?.courseWingEnabled !== true || courses == null || courses.length === 0) {
+    if (
+      startupConfig?.courseWingEnabled !== true ||
+      courses == null ||
+      courses.length === 0 ||
+      isTeacher
+    ) {
       return [];
     }
     if (conversationCourseId != null) {
@@ -76,10 +95,12 @@ const ConversationStarters = () => {
       localize('com_ui_starter_due_week'),
       ...courses
         .slice(0, 2)
-        .map((course) => localize('com_ui_starter_study_course', { 0: shortCourseName(course.name) })),
+        .map((course) =>
+          localize('com_ui_starter_study_course', { 0: shortCourseName(course.name) }),
+        ),
       localize('com_ui_starter_grades'),
     ];
-  }, [startupConfig?.courseWingEnabled, courses, conversationCourseId, localize]);
+  }, [startupConfig?.courseWingEnabled, courses, conversationCourseId, isTeacher, localize]);
 
   const conversation_starters = useMemo(() => {
     if (entity?.conversation_starters?.length) {

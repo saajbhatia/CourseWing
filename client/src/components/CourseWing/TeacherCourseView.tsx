@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Shield,
+  Trash2,
   ArrowUp,
   Sparkles,
   BookOpen,
@@ -137,12 +138,12 @@ const pillButtonClassName =
   'shrink-0 rounded-full border border-border-medium px-3.5 py-1 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary';
 const cardClassName = 'rounded-xl border border-border-light';
 
-function fmtWhen(iso: string | null): string {
+function fmtWhen(iso: string | null, referenceNow: number): string {
   if (!iso) {
     return '';
   }
   const date = new Date(iso);
-  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const days = Math.floor((referenceNow - date.getTime()) / 86_400_000);
   if (days === 0) {
     return 'today';
   }
@@ -220,7 +221,13 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   );
 }
 
-export default function TeacherCourseView({ course }: { course: CourseWingCourseSummary }) {
+export default function TeacherCourseView({
+  course,
+  referenceNow,
+}: {
+  course: CourseWingCourseSummary;
+  referenceNow: number;
+}) {
   const localize = useLocalize();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -248,7 +255,8 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
   const [newType, setNewType] = useState('Practice set');
   const [newLevel, setNewLevel] = useState<ConsoleLevel>('guided');
   const [newDue, setNewDue] = useState('');
-  const [newStudents, setNewStudents] = useState<string[]>([]);
+  const [newDescription, setNewDescription] = useState('');
+  const [newQuestions, setNewQuestions] = useState('');
   const [addingOverride, setAddingOverride] = useState(false);
 
   const courseId = course.canvasCourseId;
@@ -293,10 +301,17 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
     { onSettled: () => queryClient.invalidateQueries(['tcSettings', courseId]) },
   );
   const flagAction = useMutation(
-    ({ conversationId, action }: { conversationId: string; action: 'dismiss' | 'escalate' }) =>
-      request.post(`${base}/receipts/${conversationId}/flag`, { action }),
+    ({
+      conversationId,
+      userId,
+      action,
+    }: {
+      conversationId: string;
+      userId: string;
+      action: 'dismiss' | 'escalate';
+    }) => request.post(`${base}/receipts/${conversationId}/flag`, { action, userId }),
     {
-      onSuccess: (_, { conversationId, action }) => {
+      onSuccess: (_, { conversationId, userId, action }) => {
         if (action !== 'dismiss') {
           return;
         }
@@ -304,7 +319,10 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
           current == null
             ? current
             : {
-                queue: current.queue.filter((receipt) => receipt.conversationId !== conversationId),
+                queue: current.queue.filter(
+                  (receipt) =>
+                    receipt.conversationId !== conversationId || receipt.userId !== userId,
+                ),
               },
         );
       },
@@ -319,9 +337,15 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
       title: string;
       type: string;
       level: ConsoleLevel;
+      prompt: string | null;
+      questions: string | null;
       dueAt: string | null;
       audience: string[];
     }) => request.post(`${base}/activities`, body),
+    { onSettled: () => queryClient.invalidateQueries(['tcActivities', courseId]) },
+  );
+  const deleteActivity = useMutation(
+    (activityId: string) => request.delete(`${base}/activities/${encodeURIComponent(activityId)}`),
     { onSettled: () => queryClient.invalidateQueries(['tcActivities', courseId]) },
   );
 
@@ -341,14 +365,17 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
     }
   };
 
-  const unlockTranscript = async (conversationId: string) => {
+  const unlockTranscript = async (conversationId: string, userId: string) => {
+    const transcriptKey = `${userId}:${conversationId}`;
     try {
-      const res = (await request.post(`${base}/receipts/${conversationId}/unlock`, {})) as {
+      const res = (await request.post(`${base}/receipts/${conversationId}/unlock`, {
+        userId,
+      })) as {
         transcript: string;
       };
-      setTranscripts((prev) => ({ ...prev, [conversationId]: res.transcript }));
+      setTranscripts((prev) => ({ ...prev, [transcriptKey]: res.transcript }));
     } catch {
-      setTranscripts((prev) => ({ ...prev, [conversationId]: 'Failed to load transcript.' }));
+      setTranscripts((prev) => ({ ...prev, [transcriptKey]: 'Failed to load transcript.' }));
     }
   };
 
@@ -560,7 +587,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                 <div className="flex flex-col gap-1.5">
                   {(overview.data?.latestReceipts ?? []).map((r) => (
                     <button
-                      key={r.conversationId}
+                      key={`${r.userId}:${r.conversationId}`}
                       type="button"
                       onClick={() => {
                         setSelectedStudent(r.userId);
@@ -577,7 +604,8 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                           <span className="ml-2 font-normal text-text-secondary">{r.topic}</span>
                         </span>
                         <span className="shrink-0 text-xs text-text-tertiary">
-                          {fmtWhen(r.lastMessageAt)} · {r.durationMinutes}m · {r.helpLevel}
+                          {fmtWhen(r.lastMessageAt, referenceNow)} · {r.durationMinutes}m ·{' '}
+                          {r.helpLevel}
                         </span>
                       </div>
                       <p className="mt-1 truncate text-xs text-text-secondary">{r.summary}</p>
@@ -615,7 +643,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">{s.name}</span>
                     <span className="shrink-0 text-xs tabular-nums text-text-secondary">
                       {s.sessions} session{s.sessions === 1 ? '' : 's'} · last{' '}
-                      {fmtWhen(s.lastMessageAt)}
+                      {fmtWhen(s.lastMessageAt, referenceNow)}
                     </span>
                     <StatusPill status={s.status} />
                   </button>
@@ -658,7 +686,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                       <div className="text-xs text-text-secondary">
                         {studentDetail.data.sessions} session
                         {studentDetail.data.sessions === 1 ? '' : 's'} · last active{' '}
-                        {fmtWhen(studentDetail.data.lastMessageAt)}
+                        {fmtWhen(studentDetail.data.lastMessageAt, referenceNow)}
                       </div>
                     </div>
                     <StatusPill status={studentDetail.data.status} />
@@ -703,7 +731,8 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                               {r.topic}
                             </span>
                             <span className="shrink-0 text-xs text-text-tertiary">
-                              {fmtWhen(r.lastMessageAt)} · {r.durationMinutes}m · {r.helpLevel}
+                              {fmtWhen(r.lastMessageAt, referenceNow)} · {r.durationMinutes}m ·{' '}
+                              {r.helpLevel}
                             </span>
                           </div>
                           <p className="mt-1.5 text-[13px] leading-relaxed text-text-secondary">
@@ -728,8 +757,15 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                 <input
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Title — e.g. Sampling distributions warm-up (15 min)"
+                  placeholder="Title"
                   className="w-full bg-transparent text-base font-semibold text-text-primary outline-none placeholder:font-normal placeholder:text-text-tertiary"
+                />
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Description — what students should do"
+                  rows={2}
+                  className="mt-2 w-full resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
@@ -739,6 +775,15 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                     <Chip key={t} label={t} active={newType === t} onClick={() => setNewType(t)} />
                   ))}
                 </div>
+                {newType === 'Practice set' && (
+                  <textarea
+                    value={newQuestions}
+                    onChange={(e) => setNewQuestions(e.target.value)}
+                    placeholder="Practice problems — one per line"
+                    rows={3}
+                    className="mt-2 w-full resize-none rounded-lg border border-border-light bg-surface-primary px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+                  />
+                )}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
                     Help
@@ -763,33 +808,6 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                     className="rounded-full border border-border-light bg-surface-primary px-3 py-1 text-xs text-text-primary outline-none"
                   />
                   <Chip label="No due date" active={newDue === ''} onClick={() => setNewDue('')} />
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
-                    To
-                  </span>
-                  <Chip
-                    label="Whole class"
-                    active={newStudents.length === 0}
-                    onClick={() => setNewStudents([])}
-                  />
-                  {students
-                    .filter((s) => s.email)
-                    .map((s) => {
-                      const on = newStudents.includes(s.email as string);
-                      return (
-                        <Chip
-                          key={s.userId}
-                          label={on ? `✓ ${s.name}` : s.name}
-                          active={on}
-                          onClick={() =>
-                            setNewStudents((prev) =>
-                              on ? prev.filter((e) => e !== s.email) : [...prev, s.email as string],
-                            )
-                          }
-                        />
-                      );
-                    })}
                 </div>
                 <div className="mt-3 flex items-center gap-2.5 border-t border-border-light pt-3">
                   <span className="min-w-0 flex-1 text-xs text-text-secondary">
@@ -816,11 +834,14 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                         title: newTitle.trim(),
                         type: newType,
                         level: newLevel,
+                        prompt: newDescription.trim() || null,
+                        questions: newType === 'Practice set' ? newQuestions.trim() || null : null,
                         dueAt: newDue ? `${newDue}T12:00:00` : null,
-                        audience: newStudents,
+                        audience: [],
                       });
                       setNewTitle('');
-                      setNewStudents([]);
+                      setNewDescription('');
+                      setNewQuestions('');
                     }}
                     className="shrink-0 rounded-full bg-text-primary px-4 py-1.5 text-xs font-semibold text-surface-primary transition-opacity hover:opacity-80"
                   >
@@ -844,7 +865,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                         <span className="block truncate text-sm font-semibold">{a.title}</span>
                         <span className="block text-xs text-text-secondary">
                           {a.type} · {a.level} help ·{' '}
-                          {a.dueAt ? `due ${fmtWhen(a.dueAt)}` : 'no due date'} ·{' '}
+                          {a.dueAt ? `due ${fmtWhen(a.dueAt, referenceNow)}` : 'no due date'} ·{' '}
                           {a.audience.length
                             ? `${a.audience.length} student${a.audience.length === 1 ? '' : 's'}`
                             : 'Whole class'}
@@ -853,6 +874,14 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                       <span className="shrink-0 text-xs text-text-tertiary">
                         {a.startedCount} started
                       </span>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${a.title}`}
+                        onClick={() => deleteActivity.mutate(a.id)}
+                        className="shrink-0 rounded-full p-1.5 text-text-tertiary transition-colors hover:bg-surface-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     </div>
                   ))}
                   {!activities.data?.activities?.length ? (
@@ -872,10 +901,10 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
               <div className="flex flex-col gap-2 pb-2">
                 {(queue.data?.queue ?? []).map((f) => {
                   const pending = f.flagStatus === 'pending';
-                  const transcript = transcripts[f.conversationId];
+                  const transcript = transcripts[`${f.userId}:${f.conversationId}`];
                   return (
                     <div
-                      key={f.conversationId}
+                      key={`${f.userId}:${f.conversationId}`}
                       className={cn(
                         'rounded-xl border px-3.5 py-3',
                         pending ? 'border-red-500/40' : 'border-border-light opacity-60',
@@ -891,7 +920,8 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                             {flagTitle(f.flagType)}
                           </span>
                           <span className="block text-xs text-text-secondary">
-                            {f.student} · {f.topic} · flagged {fmtWhen(f.lastMessageAt)}
+                            {f.student} · {f.topic} · flagged{' '}
+                            {fmtWhen(f.lastMessageAt, referenceNow)}
                           </span>
                         </span>
                         <span
@@ -924,7 +954,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                             <button
                               type="button"
                               className={pillButtonClassName}
-                              onClick={() => unlockTranscript(f.conversationId)}
+                              onClick={() => unlockTranscript(f.conversationId, f.userId)}
                             >
                               Unlock transcript
                             </button>
@@ -935,6 +965,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                             onClick={() =>
                               flagAction.mutate({
                                 conversationId: f.conversationId,
+                                userId: f.userId,
                                 action: 'dismiss',
                               })
                             }
@@ -947,6 +978,7 @@ export default function TeacherCourseView({ course }: { course: CourseWingCourse
                             onClick={() =>
                               flagAction.mutate({
                                 conversationId: f.conversationId,
+                                userId: f.userId,
                                 action: 'escalate',
                               })
                             }

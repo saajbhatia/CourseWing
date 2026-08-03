@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Spinner, useToastContext } from '@librechat/client';
 import { addDays, format, isSameDay } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, ArrowUp, Files, Sparkles } from 'lucide-react';
-import { request, COURSEWING_LEVEL_LINE } from 'librechat-data-provider';
+import { request, COURSEWING_ACTIVITY_LINE } from 'librechat-data-provider';
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import type { CourseWingAssignment } from '~/data-provider/CourseWing';
 import type { CourseWingCourseIdentity } from './utils';
@@ -23,7 +23,6 @@ import {
   getCoursePrefix,
   getCourseColor,
   openCourseChat,
-  coursewingNow,
 } from './utils';
 import { useLocalize, useNewConvo } from '~/hooks';
 import { useAuthContext } from '~/hooks/AuthContext';
@@ -41,12 +40,6 @@ type TeacherActivity = {
   dueAt: string | null;
 };
 
-const ACTIVITY_LEVEL_MARKERS: Record<TeacherActivity['level'], string> = {
-  open: `${COURSEWING_LEVEL_LINE} full`,
-  guided: '',
-  socratic: `${COURSEWING_LEVEL_LINE} hints`,
-};
-
 const pillButtonClassName =
   'shrink-0 rounded-full border border-border-medium px-3.5 py-1 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary';
 
@@ -59,6 +52,7 @@ const smartPromptKeys: TranslationKeys[] = [
 function getDueLabel(
   localize: ReturnType<typeof useLocalize>,
   dueAt: string | null,
+  now: Date,
 ): string | null {
   if (dueAt == null) {
     return null;
@@ -67,7 +61,6 @@ function getDueLabel(
   if (Number.isNaN(due.getTime())) {
     return null;
   }
-  const now = coursewingNow();
   if (isSameDay(due, now)) {
     return localize('com_ui_due_today');
   }
@@ -108,7 +101,13 @@ function AssignmentRow({
   );
 }
 
-function CourseView({ course }: { course: CourseWingCourseIdentity & { name: string } }) {
+function CourseView({
+  course,
+  referenceNow,
+}: {
+  course: CourseWingCourseIdentity & { name: string };
+  referenceNow: number;
+}) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const navigate = useNavigate();
@@ -123,9 +122,10 @@ function CourseView({ course }: { course: CourseWingCourseIdentity & { name: str
   } = useCourseMaterialsQuery(course.canvasCourseId);
 
   const buckets = useMemo(
-    () => bucketAssignments(materials?.assignments ?? [], coursewingNow().getTime()),
-    [materials],
+    () => bucketAssignments(materials?.assignments ?? [], referenceNow),
+    [materials, referenceNow],
   );
+  const referenceDate = useMemo(() => new Date(referenceNow), [referenceNow]);
 
   const displayName = getDisplayCourseName(course.name);
   const color = getCourseColor(course.canvasCourseId);
@@ -157,14 +157,7 @@ function CourseView({ course }: { course: CourseWingCourseIdentity & { name: str
       .post(`/api/coursewing/activities/${encodeURIComponent(activity.id)}/started`, {})
       .catch(() => undefined);
     startCourseChat({
-      promptPrefix: [
-        getCoursePrefix(course),
-        `The teacher assigned this activity: ${activity.title}`,
-        activity.prompt ? `Activity details from the teacher: ${activity.prompt}` : '',
-        ACTIVITY_LEVEL_MARKERS[activity.level] ?? '',
-      ]
-        .filter(Boolean)
-        .join('\n'),
+      promptPrefix: `${getCoursePrefix(course)}\n${COURSEWING_ACTIVITY_LINE} ${activity.id}`,
       greeting: localize('com_ui_teacher_activity_greeting', { name: activity.title }),
     });
   };
@@ -210,7 +203,7 @@ function CourseView({ course }: { course: CourseWingCourseIdentity & { name: str
         <AssignmentRow
           key={assignment.id}
           assignment={assignment}
-          dueLabel={getDueLabel(localize, assignment.dueAt)}
+          dueLabel={getDueLabel(localize, assignment.dueAt, referenceDate)}
           onChat={() => startAssignmentChat(assignment)}
         />
       ))}
@@ -308,10 +301,15 @@ function CourseView({ course }: { course: CourseWingCourseIdentity & { name: str
                           </span>
                           <span className="block truncate text-xs text-text-tertiary">
                             {activity.type}
-                            {getDueLabel(localize, activity.dueAt) != null
-                              ? ` · ${getDueLabel(localize, activity.dueAt)}`
+                            {getDueLabel(localize, activity.dueAt, referenceDate) != null
+                              ? ` · ${getDueLabel(localize, activity.dueAt, referenceDate)}`
                               : ''}
                           </span>
+                          {activity.prompt != null && activity.prompt !== '' && (
+                            <span className="mt-0.5 block text-xs leading-relaxed text-text-secondary">
+                              {activity.prompt}
+                            </span>
+                          )}
                         </span>
                         <button
                           type="button"
@@ -418,6 +416,26 @@ export default function CoursePage() {
 
   const { isAuthenticated } = useAuthContext();
   const connection = useCanvasConnectionQuery();
+  const frozenNow = connection.data?.connected === true ? connection.data.frozenNow : null;
+  const [hostNow, setHostNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (frozenNow != null) {
+      return;
+    }
+    setHostNow(Date.now());
+    const interval = window.setInterval(() => setHostNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, [frozenNow]);
+  const referenceNow = (() => {
+    if (frozenNow == null) {
+      return hostNow;
+    }
+    const parsed = Date.parse(frozenNow);
+    if (!Number.isFinite(parsed)) {
+      throw new RangeError('Canvas returned an invalid frozen clock');
+    }
+    return parsed;
+  })();
   const teacherMe = useQuery(
     ['tcMe'],
     () => request.get<{ isTeacher: boolean }>('/api/coursewing/teacher/me'),
@@ -432,8 +450,14 @@ export default function CoursePage() {
   const course = currentCourses.find((item) => item.canvasCourseId === canvasCourseId);
 
   if (connection.data?.connected === true && course != null) {
-    if (teacherMe.data?.isTeacher === true) {
-      return <TeacherCourseView key={course.canvasCourseId} course={course} />;
+    if (teacherMe.data?.isTeacher === true && course.isInstructor === true) {
+      return (
+        <TeacherCourseView
+          key={course.canvasCourseId}
+          course={course}
+          referenceNow={referenceNow}
+        />
+      );
     }
     if (isAuthenticated && teacherMe.isLoading) {
       return (
@@ -442,7 +466,7 @@ export default function CoursePage() {
         </main>
       );
     }
-    return <CourseView key={course.canvasCourseId} course={course} />;
+    return <CourseView key={course.canvasCourseId} course={course} referenceNow={referenceNow} />;
   }
 
   if (
