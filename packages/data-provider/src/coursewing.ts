@@ -2,6 +2,7 @@ export const assistanceLevels = ['discuss', 'hints', 'worked', 'full'] as const;
 
 const COURSE_ID_PATTERN = /^Canvas course ID:\s*(\d+)\s*$/im;
 const ASSIGNMENT_ID_PATTERN = /^Canvas assignment ID:\s*(\d+)\s*$/im;
+const ACTIVITY_ID_PATTERN = /^CourseWing activity ID:\s*([a-f\d]{24})\s*$/im;
 
 function extractMarkedId(pattern: RegExp, promptPrefix?: string | null): number | null {
   if (!promptPrefix) {
@@ -29,6 +30,21 @@ export function extractCanvasAssignmentId(promptPrefix?: string | null): number 
 }
 
 /**
+ * Identifies a teacher-created activity so the API can resolve its level and
+ * instructions from account-scoped server storage. The marker is only an
+ * identifier and is never trusted as authorization.
+ */
+export function extractCanvasActivityId(promptPrefix?: string | null): string | null {
+  if (!promptPrefix) {
+    return null;
+  }
+  const matches = Array.from(
+    promptPrefix.matchAll(new RegExp(ACTIVITY_ID_PATTERN.source, `${ACTIVITY_ID_PATTERN.flags}g`)),
+  );
+  return matches.length === 1 ? matches[0][1].toLowerCase() : null;
+}
+
+/**
  * Resolves the Canvas course a conversation belongs to, preferring the persisted
  * `canvasCourseId` field and falling back to the marker line in `promptPrefix`
  * (present on optimistic client-side conversation objects before the first save).
@@ -49,12 +65,14 @@ export const courseWingPersonas = ['socratic', 'direct', 'storyteller', 'encoura
 export type CourseWingPersona = (typeof courseWingPersonas)[number];
 
 export const COURSEWING_LEVEL_LINE = 'CourseWing assistance level:';
+export const COURSEWING_ACTIVITY_LINE = 'CourseWing activity ID:';
 export const COURSEWING_PERSONA_LINE = 'CourseWing persona:';
 export const COURSEWING_POLICY_MARKER = '[CourseWing assistance policy';
 export const COURSEWING_TUTOR_MARKER = '[CourseWing tutor';
 export const COURSEWING_PERSONA_MARKER = '[CourseWing persona';
 export const COURSEWING_CARD_MARKER = '[CourseWing course context';
 export const COURSEWING_ASSIGNMENT_MARKER = '[CourseWing assignment context';
+export const COURSEWING_ASSIGNED_ACTIVITY_MARKER = '[CourseWing assigned activity';
 
 /** Pre-rename ("LearnLight"/"LearnLink") lines still stored in existing conversations' prompt prefixes. */
 const LEGACY_PERSONA_LINES = ['LearnLight persona:', 'LearnLink persona:'];
@@ -84,7 +102,7 @@ export function extractAssistanceLevel(promptPrefix?: string | null): Assistance
  */
 export function stripCourseWingBlocks(promptPrefix: string): string {
   const marker =
-    /^\[(?:CourseWing|LearnLi(?:ght|nk)) (?:assistance policy|tutor|persona|course context|assignment context)(?:\b|\])/im.exec(
+    /^\[(?:CourseWing|LearnLi(?:ght|nk)) (?:assistance policy|tutor|persona|course context|assignment context|assigned activity)(?:\b|\])/im.exec(
       promptPrefix,
     );
   if (!marker || marker.index == null) {

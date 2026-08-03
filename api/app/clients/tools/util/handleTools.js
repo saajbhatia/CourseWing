@@ -369,12 +369,19 @@ const loadTools = async ({
         continue;
       }
       requestedTools[tool] = async () => {
-        // Course-chat middleware pins the tenant it verified onto this request.
-        // Falling back to the current mapping is safe only for general chats,
-        // which do not carry a verified Canvas course/account scope.
-        const tenantId =
-          options.req?.courseWingCanvasTenantId ??
-          (await getCourseWingCanvasIdentity(options.req?.user?.id ?? user)).tenantId;
+        // CourseWing middleware pins the same account snapshot used to build
+        // the prompt clock. An explicit null means it verified that no account
+        // was available; never re-resolve a later mapping within this request.
+        const hasPinnedTenant = Object.prototype.hasOwnProperty.call(
+          options.req ?? {},
+          'courseWingCanvasTenantId',
+        );
+        const tenantId = hasPinnedTenant
+          ? options.req.courseWingCanvasTenantId
+          : (await getCourseWingCanvasIdentity(options.req?.user?.id ?? user)).tenantId;
+        if (!tenantId) {
+          throw new Error('Canvas account is unavailable for CourseWing tools');
+        }
         return createCourseWingTool(tool, {
           tenantId,
           userName: options.req?.user?.name ?? options.req?.user?.username,

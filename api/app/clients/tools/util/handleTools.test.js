@@ -375,6 +375,27 @@ describe('Tool Handlers', () => {
       );
     });
 
+    it('does not re-resolve a Canvas mapping after middleware pinned no account', async () => {
+      const userId = fakeUser._id.toString();
+      const toolMap = await loadTools({
+        user: userId,
+        tools: ['coursewing_get_assignments'],
+        returnMap: true,
+        options: {
+          req: {
+            user: { id: userId },
+            courseWingCanvasTenantId: null,
+          },
+        },
+      });
+
+      await expect(toolMap.coursewing_get_assignments()).rejects.toThrow(
+        'Canvas account is unavailable',
+      );
+      expect(mockGetCourseWingCanvasIdentity).not.toHaveBeenCalled();
+      expect(mockCreateCourseWingTool).not.toHaveBeenCalled();
+    });
+
     it('passes request body to chat MCP tool creation and skips stale cache for BODY-scoped servers', async () => {
       const serverName = 'body-scoped';
       const toolKey = `search${Constants.mcp_delimiter}${serverName}`;

@@ -27,8 +27,12 @@ export type ServerRequest = Request<unknown, unknown, RequestBody> & {
   conversationCreatedAt?: string;
   /** Trusted conversation loaded by request middleware/controller and reused by save logic. */
   resolvedConversation?: Partial<TConversation> | null;
-  /** Verified internal Canvas account scope attached only to CourseWing course requests. */
-  courseWingCanvasAccountKey?: string;
+  /** Canvas account snapshot pinned with the request's CourseWing clock. */
+  courseWingCanvasTenantId?: string | null;
+  courseWingCanvasAccountKey?: string | null;
+  courseWingCanvasCourseKey?: string;
+  /** Trusted per-tenant clock ceiling attached by CourseWing request middleware. */
+  courseWingFrozenNow?: string | null;
   /** Passport strategy that populated req.user for this request. */
   authStrategy?: string;
 };

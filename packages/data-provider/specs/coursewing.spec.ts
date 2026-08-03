@@ -1,9 +1,12 @@
 import {
   extractAssistanceLevel,
+  extractCanvasActivityId,
   stripCourseWingBlocks,
+  COURSEWING_ACTIVITY_LINE,
   COURSEWING_LEVEL_LINE,
   COURSEWING_POLICY_MARKER,
   COURSEWING_CARD_MARKER,
+  COURSEWING_ASSIGNED_ACTIVITY_MARKER,
 } from '../src/coursewing';
 
 const basePrefix = [
@@ -40,6 +43,25 @@ describe('extractAssistanceLevel', () => {
   });
 });
 
+describe('extractCanvasActivityId', () => {
+  const activityId = 'ABCDEF0123456789ABCDEF01';
+
+  it('extracts one canonical activity marker and normalizes it', () => {
+    expect(
+      extractCanvasActivityId(`${basePrefix}\n${COURSEWING_ACTIVITY_LINE} ${activityId}`),
+    ).toBe(activityId.toLowerCase());
+  });
+
+  it('rejects malformed or duplicate activity markers', () => {
+    expect(extractCanvasActivityId(`${COURSEWING_ACTIVITY_LINE} not-an-object-id`)).toBeNull();
+    expect(
+      extractCanvasActivityId(
+        `${COURSEWING_ACTIVITY_LINE} ${activityId}\n${COURSEWING_ACTIVITY_LINE} ${activityId}`,
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('stripCourseWingBlocks', () => {
   it('returns the prefix unchanged when no blocks are present', () => {
     expect(stripCourseWingBlocks(basePrefix)).toBe(basePrefix);
@@ -51,6 +73,11 @@ describe('stripCourseWingBlocks', () => {
 
   it('handles a card without a policy block', () => {
     const prefix = `${basePrefix}\n\n${COURSEWING_CARD_MARKER} — synced]\nCourse: Chemistry`;
+    expect(stripCourseWingBlocks(prefix)).toBe(basePrefix);
+  });
+
+  it('drops a previously injected assigned-activity block', () => {
+    const prefix = `${basePrefix}\n\n${COURSEWING_ASSIGNED_ACTIVITY_MARKER}]\nTitle: Stored warm-up\nTeacher instructions: Stored only`;
     expect(stripCourseWingBlocks(prefix)).toBe(basePrefix);
   });
 });

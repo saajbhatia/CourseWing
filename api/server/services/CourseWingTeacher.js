@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
-const { logger } = require('@librechat/data-schemas');
-const { extractAssistanceLevel } = require('librechat-data-provider');
+const {
+  logger,
+  applyTenantIsolation,
+  getTenantId,
+  SYSTEM_TENANT_ID,
+} = require('@librechat/data-schemas');
+const { extractCanvasActivityId, extractCanvasAssignmentId } = require('librechat-data-provider');
 const { serviceFetch, getCourseWingCanvasIdentity } = require('~/server/services/CourseWing');
 
 const TEACHER_MODEL = () =>
@@ -13,12 +18,111 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const CONSOLE_LEVELS = ['open', 'guided', 'socratic'];
 /** Console levels map onto existing assistance policies; 'guided' is the learning default. */
 const CONSOLE_LEVEL_TO_POLICY = { open: 'full', guided: null, socratic: 'hints' };
+const CANVAS_ACCOUNT_KEY_PATTERN = /^[a-f\d]{24}$/;
+const CANVAS_COURSE_KEY_PATTERN = /^[a-f\d]{64}$/;
+const DEFAULT_APP_TENANT_KEY = '__DEFAULT__';
+const APP_TENANT_SCOPE_APPLIED = Symbol.for('coursewing:appTenantScope');
+
+function currentAppTenantKey() {
+  return getTenantId() ?? DEFAULT_APP_TENANT_KEY;
+}
+
+function activeAppTenantFilter() {
+  const tenantId = getTenantId();
+  return tenantId === SYSTEM_TENANT_ID ? null : (tenantId ?? DEFAULT_APP_TENANT_KEY);
+}
+
+function conversationAppTenantFilter() {
+  const tenantId = getTenantId();
+  if (tenantId === SYSTEM_TENANT_ID) {
+    return {};
+  }
+  // MongoDB's `{ tenantId: null }` matches both null and missing fields, which
+  // is the legacy/default app tenant without admitting named-tenant records.
+  return { tenantId: tenantId ?? null };
+}
+
+function teacherCacheKey(baseKey) {
+  return `${baseKey}:${currentAppTenantKey()}`;
+}
+
+/**
+ * LibreChat's transitional tenant plugin intentionally leaves queries unfiltered
+ * when no ALS tenant exists. CourseWing treats that state as the real default
+ * app tenant, so its custom collections need an explicit scope even there.
+ */
+function applyCourseWingAppTenantScope(schema) {
+  if (schema[APP_TENANT_SCOPE_APPLIED]) {
+    return;
+  }
+  schema[APP_TENANT_SCOPE_APPLIED] = true;
+
+  const queryScope = function () {
+    const appTenantKey = activeAppTenantFilter();
+    if (appTenantKey != null) {
+      this.where({ appTenantKey });
+    }
+  };
+  for (const operation of [
+    'find',
+    'findOne',
+    'distinct',
+    'findOneAndUpdate',
+    'findOneAndDelete',
+    'findOneAndReplace',
+    'updateOne',
+    'updateMany',
+    'deleteOne',
+    'deleteMany',
+    'countDocuments',
+    'replaceOne',
+  ]) {
+    schema.pre(operation, queryScope);
+  }
+
+  schema.pre('aggregate', function () {
+    const appTenantKey = activeAppTenantFilter();
+    if (appTenantKey != null) {
+      this.pipeline().unshift({ $match: { appTenantKey } });
+    }
+  });
+
+  schema.pre('validate', function () {
+    const appTenantKey = activeAppTenantFilter();
+    if (appTenantKey == null) {
+      return;
+    }
+    if (this.appTenantKey == null) {
+      this.appTenantKey = appTenantKey;
+    } else if (this.appTenantKey !== appTenantKey) {
+      throw new Error('[CourseWingTeacher] Cross-tenant document mutation is not allowed');
+    }
+  });
+
+  schema.pre('insertMany', function (next, docs) {
+    const appTenantKey = activeAppTenantFilter();
+    if (appTenantKey != null && Array.isArray(docs)) {
+      for (const doc of docs) {
+        if (doc.appTenantKey == null) {
+          doc.appTenantKey = appTenantKey;
+        } else if (doc.appTenantKey !== appTenantKey) {
+          return next(new Error('[CourseWingTeacher] Cross-tenant document insert is not allowed'));
+        }
+      }
+    }
+    next();
+  });
+}
 
 const receiptSchema = new mongoose.Schema(
   {
-    conversationId: { type: String, required: true, unique: true },
+    appTenantKey: { type: String, required: true, select: false },
+    tenantId: { type: String },
+    conversationId: { type: String, required: true },
     userId: { type: String, required: true, index: true },
-    canvasCourseId: { type: Number, required: true, index: true },
+    canvasAccountKey: { type: String, select: false },
+    canvasCourseKey: { type: String, required: true },
+    canvasCourseId: { type: Number, required: true },
     topic: String,
     summary: String,
     strengths: String,
@@ -37,10 +141,28 @@ const receiptSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+receiptSchema.index({
+  appTenantKey: 1,
+  canvasCourseKey: 1,
+  canvasCourseId: 1,
+  lastMessageAt: -1,
+});
+receiptSchema.index(
+  { appTenantKey: 1, canvasCourseKey: 1, userId: 1, conversationId: 1 },
+  {
+    name: 'app_tenant_canvas_course_user_conversation_unique',
+    unique: true,
+    partialFilterExpression: { canvasCourseKey: { $type: 'string' } },
+  },
+);
 
 const courseSettingSchema = new mongoose.Schema(
   {
-    canvasCourseId: { type: Number, required: true, unique: true },
+    appTenantKey: { type: String, required: true, select: false },
+    tenantId: { type: String },
+    canvasAccountKey: { type: String, select: false },
+    canvasCourseKey: { type: String, required: true },
+    canvasCourseId: { type: Number, required: true },
     helpLevel: { type: String, default: 'guided' },
     blockedRules: { type: [String], default: [] },
     overrides: {
@@ -57,14 +179,27 @@ const courseSettingSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+courseSettingSchema.index(
+  { appTenantKey: 1, canvasCourseKey: 1 },
+  {
+    name: 'app_tenant_canvas_course_unique',
+    unique: true,
+    partialFilterExpression: { canvasCourseKey: { $type: 'string' } },
+  },
+);
 
 const activitySchema = new mongoose.Schema(
   {
-    canvasCourseId: { type: Number, required: true, index: true },
+    appTenantKey: { type: String, required: true, select: false },
+    tenantId: { type: String },
+    canvasAccountKey: { type: String, select: false },
+    canvasCourseKey: { type: String, required: true },
+    canvasCourseId: { type: Number, required: true },
     title: { type: String, required: true },
     type: { type: String, default: 'Practice set' },
     level: { type: String, default: 'guided' },
     prompt: String,
+    questions: String,
     dueAt: Date,
     audience: { type: [String], default: [] },
     createdBy: String,
@@ -72,6 +207,19 @@ const activitySchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+activitySchema.index({
+  appTenantKey: 1,
+  canvasCourseKey: 1,
+  canvasCourseId: 1,
+  createdAt: -1,
+});
+
+applyTenantIsolation(receiptSchema);
+applyTenantIsolation(courseSettingSchema);
+applyTenantIsolation(activitySchema);
+applyCourseWingAppTenantScope(receiptSchema);
+applyCourseWingAppTenantScope(courseSettingSchema);
+applyCourseWingAppTenantScope(activitySchema);
 
 /* Collection names keep their pre-rebrand "learnlight" spelling: production data
  * lives there, and data-at-rest identifiers are intentionally not renamed
@@ -87,22 +235,116 @@ const CourseWingActivity =
   mongoose.model('CourseWingActivity', activitySchema, 'learnlightactivities');
 
 const teacherRoleSchema = new mongoose.Schema(
-  { email: { type: String, required: true, unique: true, lowercase: true } },
+  {
+    appTenantKey: { type: String, required: true, select: false },
+    tenantId: { type: String },
+    email: { type: String, required: true, lowercase: true },
+  },
   { timestamps: true },
 );
+teacherRoleSchema.index(
+  { appTenantKey: 1, email: 1 },
+  {
+    name: 'app_tenant_email_unique',
+    unique: true,
+    partialFilterExpression: { appTenantKey: { $type: 'string' } },
+  },
+);
+applyTenantIsolation(teacherRoleSchema);
+applyCourseWingAppTenantScope(teacherRoleSchema);
 const CourseWingTeacherRole =
   mongoose.models.CourseWingTeacherRole ||
   mongoose.model('CourseWingTeacherRole', teacherRoleSchema, 'learnlightteacherroles');
 
-let assignedTeacherCache = { emails: new Set(), expiresAt: 0 };
+let teacherStorageIndexPromise = null;
+
+/**
+ * Mongoose creates new indexes but does not remove the old globally unique
+ * setting-course, receipt-conversation, and teacher-email indexes. Drop only
+ * those known legacy indexes (including the pre-app-tenant account indexes)
+ * before creating tenant/account-scoped replacements. Existing unscoped
+ * records remain quarantined instead of being guessed into a tenant.
+ */
+async function ensureTeacherStorageIndexes() {
+  if (teacherStorageIndexPromise) {
+    return teacherStorageIndexPromise;
+  }
+  teacherStorageIndexPromise = (async () => {
+    const legacyIndexes = [
+      {
+        model: CourseWingCourseSetting,
+        name: 'canvasCourseId_1',
+      },
+      {
+        model: CourseWingReceipt,
+        name: 'conversationId_1',
+      },
+      {
+        model: CourseWingTeacherRole,
+        name: 'email_1',
+      },
+      {
+        model: CourseWingCourseSetting,
+        name: 'canvas_account_course_unique',
+      },
+      {
+        model: CourseWingReceipt,
+        name: 'canvas_account_user_conversation_unique',
+      },
+      {
+        model: CourseWingCourseSetting,
+        name: 'tenant_canvas_account_course_unique',
+      },
+      {
+        model: CourseWingReceipt,
+        name: 'tenant_canvas_account_user_conversation_unique',
+      },
+      {
+        model: CourseWingTeacherRole,
+        name: 'tenant_email_unique',
+      },
+    ];
+    for (const legacy of legacyIndexes) {
+      try {
+        const indexes = await legacy.model.collection.indexes();
+        const legacyIndex = indexes.find(
+          (index) => index.name === legacy.name && index.unique === true,
+        );
+        if (legacyIndex) {
+          await legacy.model.collection.dropIndex(legacyIndex.name);
+        }
+      } catch (error) {
+        // A new deployment may not have created this collection yet.
+        if (![26, 27].includes(error?.code) && error?.codeName !== 'NamespaceNotFound') {
+          throw error;
+        }
+      }
+    }
+    await Promise.all([
+      CourseWingReceipt.createIndexes(),
+      CourseWingCourseSetting.createIndexes(),
+      CourseWingActivity.createIndexes(),
+      CourseWingTeacherRole.createIndexes(),
+    ]);
+  })().catch((error) => {
+    teacherStorageIndexPromise = null;
+    throw error;
+  });
+  return teacherStorageIndexPromise;
+}
+
+const assignedTeacherCache = new Map();
 
 async function getAssignedTeacherEmails() {
-  if (assignedTeacherCache.expiresAt > Date.now()) {
-    return assignedTeacherCache.emails;
+  await ensureTeacherStorageIndexes();
+  const cacheKey = teacherCacheKey('coursewing:assigned-teachers');
+  const cached = assignedTeacherCache.get(cacheKey);
+  if (cached?.expiresAt > Date.now()) {
+    return cached.emails;
   }
   const docs = await CourseWingTeacherRole.find().select('email').lean();
   const emails = new Set(docs.map((doc) => doc.email));
-  assignedTeacherCache = { emails, expiresAt: Date.now() + 30 * 1000 };
+  assignedTeacherCache.set(cacheKey, { emails, expiresAt: Date.now() + 30 * 1000 });
   return emails;
 }
 
@@ -131,75 +373,173 @@ async function isTeacherUser(user) {
   return (await getAssignedTeacherEmails()).has(email);
 }
 
-const teacherCourseCache = new Map();
+const canvasCourseCache = new Map();
 
-/** Courses the teacher's own connected Canvas account can see; scopes every console request. */
-async function getTeacherCourseIds(userId) {
-  const cached = teacherCourseCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.courseIds;
+/**
+ * The caller's current Canvas identity and service-verified shared course keys.
+ * A shared key joins teachers and students in the same LMS course; the account
+ * key remains the immutable per-user binding for the conversation itself.
+ */
+async function getCanvasCourseScope(userId, pinnedIdentity, { forceRefresh = false } = {}) {
+  await ensureTeacherStorageIndexes();
+  const identity =
+    pinnedIdentity === undefined ? await getCourseWingCanvasIdentity(userId) : pinnedIdentity;
+  if (
+    !identity?.tenantId ||
+    typeof identity.tenantId !== 'string' ||
+    !CANVAS_ACCOUNT_KEY_PATTERN.test(identity.canvasAccountKey ?? '')
+  ) {
+    return null;
   }
-  const identity = await getCourseWingCanvasIdentity(userId);
-  if (!identity?.tenantId) {
-    return new Set();
+  const cacheKey = teacherCacheKey(`coursewing:courses:${userId}`);
+  const cached = canvasCourseCache.get(cacheKey);
+  if (
+    !forceRefresh &&
+    cached &&
+    cached.canvasAccountKey === identity.canvasAccountKey &&
+    cached.expiresAt > Date.now()
+  ) {
+    return { ...identity, courseIds: cached.courseIds, courses: cached.courses };
   }
   const { ok, body } = await serviceFetch('/api/coursewing/courses/current', {
     headers: { 'X-Tenant-Id': identity.tenantId },
   });
   if (!ok || !Array.isArray(body)) {
-    return new Set();
+    throw new Error('Canvas service did not return the current course list');
   }
-  const courseIds = new Set(
-    body.map((course) => course.canvasCourseId).filter((id) => Number.isSafeInteger(id)),
-  );
-  teacherCourseCache.set(userId, { courseIds, expiresAt: Date.now() + 5 * 60 * 1000 });
-  return courseIds;
+  const courses = new Map();
+  for (const course of body) {
+    const canvasCourseId = course?.canvasCourseId;
+    if (
+      !Number.isSafeInteger(canvasCourseId) ||
+      canvasCourseId <= 0 ||
+      !CANVAS_COURSE_KEY_PATTERN.test(course?.courseKey ?? '') ||
+      typeof course?.isInstructor !== 'boolean' ||
+      courses.has(canvasCourseId)
+    ) {
+      throw new Error('Canvas service returned an invalid course scope');
+    }
+    courses.set(canvasCourseId, {
+      courseKey: course.courseKey,
+      isInstructor: course.isInstructor,
+    });
+  }
+  const courseIds = new Set(courses.keys());
+  canvasCourseCache.set(cacheKey, {
+    canvasAccountKey: identity.canvasAccountKey,
+    courseIds,
+    courses,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+  return { ...identity, courseIds, courses };
+}
+
+/** Courses the teacher's pinned Canvas account can see. */
+async function getTeacherCourseIds(userId, pinnedIdentity) {
+  return (await getCanvasCourseScope(userId, pinnedIdentity))?.courseIds ?? new Set();
 }
 
 const settingsCache = new Map();
 
-async function getCourseSetting(canvasCourseId) {
-  const cached = settingsCache.get(canvasCourseId);
+function courseScopeKey(canvasCourseKey) {
+  return teacherCacheKey(`coursewing:${canvasCourseKey}`);
+}
+
+async function getCourseSetting(canvasCourseKey, canvasCourseId) {
+  await ensureTeacherStorageIndexes();
+  const cacheKey = courseScopeKey(canvasCourseKey);
+  const cached = settingsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.setting;
   }
-  const setting = await CourseWingCourseSetting.findOne({ canvasCourseId }).lean();
-  settingsCache.set(canvasCourseId, { setting, expiresAt: Date.now() + 30 * 1000 });
+  const setting = await CourseWingCourseSetting.findOne({
+    canvasCourseKey,
+    canvasCourseId,
+  }).lean();
+  settingsCache.set(cacheKey, { setting, expiresAt: Date.now() + 30 * 1000 });
   return setting;
 }
 
-function clearCourseSettingCache(canvasCourseId) {
-  settingsCache.delete(canvasCourseId);
+function clearCourseSettingCache(canvasCourseKey) {
+  settingsCache.delete(courseScopeKey(canvasCourseKey));
 }
 
 /**
- * Resolves the policy the middleware should apply for a course chat that carries no
- * explicit assistance-level marker. Returns `{ policyLevel, blockedRules }` where a null
- * policyLevel means "use the learning default".
+ * Resolves the account-scoped policy the middleware applies to a course chat.
+ * Returns `{ policyLevel, blockedRules }` where a null policyLevel means
+ * "use the learning default".
  */
-async function getCourseAssistance(canvasCourseId, canvasAssignmentId) {
-  try {
-    const setting = await getCourseSetting(canvasCourseId);
-    if (!setting) {
-      return { policyLevel: null, blockedRules: [] };
-    }
-    const override =
-      canvasAssignmentId != null
-        ? (setting.overrides ?? []).find((o) => o.canvasAssignmentId === canvasAssignmentId)
-        : null;
-    const consoleLevel = override?.level ?? setting.helpLevel ?? 'guided';
-    const blockedRules = [
-      ...(setting.blockedRules ?? []),
-      ...(override?.blockedRules ?? []),
-    ].filter(Boolean);
-    return {
-      policyLevel: CONSOLE_LEVEL_TO_POLICY[consoleLevel] ?? null,
-      blockedRules,
-    };
-  } catch (error) {
-    logger.error('[CourseWingTeacher] Failed to resolve course assistance setting', error);
-    return { policyLevel: null, blockedRules: [] };
+async function getCourseAssistance(canvasCourseKey, canvasCourseId, canvasAssignmentId) {
+  const setting = await getCourseSetting(canvasCourseKey, canvasCourseId);
+  if (!setting) {
+    return { consoleLevel: 'guided', policyLevel: null, blockedRules: [] };
   }
+  const override =
+    canvasAssignmentId != null
+      ? (setting.overrides ?? []).find((o) => o.canvasAssignmentId === canvasAssignmentId)
+      : null;
+  const consoleLevel = override?.level ?? setting.helpLevel ?? 'guided';
+  const blockedRules = [...(setting.blockedRules ?? []), ...(override?.blockedRules ?? [])].filter(
+    Boolean,
+  );
+  return {
+    consoleLevel,
+    policyLevel: CONSOLE_LEVEL_TO_POLICY[consoleLevel] ?? null,
+    blockedRules,
+  };
+}
+
+function isActivityVisibleToUser(activity, user) {
+  const audience = activity?.audience ?? [];
+  if (!audience.length) {
+    return true;
+  }
+  const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+  return email !== '' && audience.some((value) => String(value).trim().toLowerCase() === email);
+}
+
+async function getVisibleCourseActivity(canvasCourseKey, canvasCourseId, activityId, user) {
+  if (!mongoose.isValidObjectId(activityId)) {
+    return null;
+  }
+  const activity = await CourseWingActivity.findOne({
+    _id: activityId,
+    canvasCourseKey,
+    canvasCourseId,
+  }).lean();
+  return isActivityVisibleToUser(activity, user) ? activity : null;
+}
+
+function receiptHelpLevelForConsoleLevel(consoleLevel) {
+  if (consoleLevel === 'open') {
+    return 'full';
+  }
+  if (consoleLevel === 'socratic') {
+    return 'hints';
+  }
+  return 'guided';
+}
+
+/** Resolves receipt metadata from trusted account-scoped storage, never a raw level marker. */
+async function resolveConversationHelpLevel(conversation, canvasCourseKey, owner) {
+  const assistance = await getCourseAssistance(
+    canvasCourseKey,
+    conversation.canvasCourseId,
+    extractCanvasAssignmentId(conversation.promptPrefix),
+  );
+  const activityId = extractCanvasActivityId(conversation.promptPrefix);
+  if (activityId != null) {
+    const activity = await getVisibleCourseActivity(
+      canvasCourseKey,
+      conversation.canvasCourseId,
+      activityId,
+      owner,
+    );
+    if (activity) {
+      return receiptHelpLevelForConsoleLevel(activity.level);
+    }
+  }
+  return receiptHelpLevelForConsoleLevel(assistance.consoleLevel);
 }
 
 function buildCourseRules(blockedRules) {
@@ -304,8 +644,15 @@ function visibleMessageText(message) {
     .join('\n');
 }
 
-async function getConversationMessages(conversationId) {
-  return mongoose.models.Message.find({ conversationId })
+async function getConversationMessages(conversationId, userId) {
+  if (!conversationId || !userId) {
+    return [];
+  }
+  return mongoose.models.Message.find({
+    ...conversationAppTenantFilter(),
+    conversationId,
+    user: String(userId),
+  })
     .sort({ createdAt: 1 })
     .select('text content isCreatedByUser createdAt')
     .lean();
@@ -350,27 +697,33 @@ function resolveFlagStatus(flagType, keepStatus, existing) {
   return keepStatus ? existing.flagStatus : 'pending';
 }
 
-async function generateReceipt(conversation, stats) {
-  const messages = await getConversationMessages(conversation.conversationId);
+async function generateReceipt(conversation, stats, canvasCourseKey, owner) {
+  const messages = await getConversationMessages(conversation.conversationId, conversation.user);
   if (messages.length < 2) {
     return null;
   }
   const transcript = buildTranscript(messages);
-  const markedLevel = extractAssistanceLevel(conversation.promptPrefix);
+  const helpLevel = await resolveConversationHelpLevel(conversation, canvasCourseKey, owner);
   const parsed = await llmJson([
     { role: 'system', content: RECEIPT_SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `Conversation title: ${conversation.title ?? 'untitled'}\nAssistance level: ${markedLevel ?? 'guided (course default)'}\n\nTranscript:\n${transcript}`,
+      content: `Conversation title: ${conversation.title ?? 'untitled'}\nAssistance level: ${helpLevel}\n\nTranscript:\n${transcript}`,
     },
   ]);
   if (!parsed) {
     return null;
   }
   const flagType = normalizeFlagType(parsed.flag?.type);
-  const existing = await CourseWingReceipt.findOne({
+  // Legacy unscoped receipts remain quarantined. This scoped refresh creates a
+  // new receipt rather than guessing which Canvas account owned old data.
+  const receiptScope = {
     conversationId: conversation.conversationId,
-  }).lean();
+    userId: String(conversation.user),
+    canvasCourseKey,
+    canvasCourseId: conversation.canvasCourseId,
+  };
+  const existing = await CourseWingReceipt.findOne(receiptScope).lean();
   const keepStatus =
     existing != null &&
     existing.flagType === flagType &&
@@ -381,13 +734,14 @@ async function generateReceipt(conversation, stats) {
   );
   const update = {
     userId: String(conversation.user),
+    canvasCourseKey,
     canvasCourseId: conversation.canvasCourseId,
     topic: String(parsed.topic ?? '').slice(0, 120),
     summary: String(parsed.summary ?? '').slice(0, 2000),
     strengths: String(parsed.strengths ?? '').slice(0, 500),
     struggles: String(parsed.struggles ?? '').slice(0, 500),
     usagePattern: String(parsed.usagePattern ?? '').slice(0, 200),
-    helpLevel: markedLevel ?? 'guided',
+    helpLevel,
     flagType,
     flagNote: flagType ? String(parsed.flag?.note ?? '').slice(0, 500) : null,
     flagStatus: resolveFlagStatus(flagType, keepStatus, existing),
@@ -398,16 +752,25 @@ async function generateReceipt(conversation, stats) {
     model: TEACHER_MODEL(),
   };
   return CourseWingReceipt.findOneAndUpdate(
-    { conversationId: conversation.conversationId },
+    receiptScope,
     { $set: update },
     { upsert: true, new: true },
   ).lean();
 }
 
 /** Generates or refreshes receipts for course conversations whose message counts changed. */
-async function refreshReceipts(canvasCourseId, { limit = MAX_RECEIPTS_PER_REFRESH } = {}) {
-  const allConversations = await mongoose.models.Conversation.find({ canvasCourseId })
-    .select('conversationId user title promptPrefix canvasCourseId')
+async function refreshReceipts(
+  canvasCourseKey,
+  canvasCourseId,
+  { limit = MAX_RECEIPTS_PER_REFRESH } = {},
+) {
+  await ensureTeacherStorageIndexes();
+  const allConversations = await mongoose.models.Conversation.find({
+    ...conversationAppTenantFilter(),
+    canvasCourseKey,
+    canvasCourseId,
+  })
+    .select('+canvasCourseKey conversationId user title promptPrefix canvasCourseId')
     .lean();
   const owners = await getUsersById([...new Set(allConversations.map((c) => String(c.user)))]);
   const teacherOwnerIds = new Set();
@@ -422,32 +785,49 @@ async function refreshReceipts(canvasCourseId, { limit = MAX_RECEIPTS_PER_REFRES
   if (!conversations.length) {
     return { generated: 0, total: 0 };
   }
-  const ids = conversations.map((c) => c.conversationId);
+  const conversationKey = (conversationId, userId) => `${conversationId}\u0000${userId}`;
+  const messageScopes = conversations.map((conversation) => ({
+    conversationId: conversation.conversationId,
+    user: String(conversation.user),
+  }));
+  const receiptScopes = conversations.map((conversation) => ({
+    conversationId: conversation.conversationId,
+    userId: String(conversation.user),
+  }));
+  const messageTenantFilter = conversationAppTenantFilter();
   const [countRows, receipts] = await Promise.all([
     mongoose.models.Message.aggregate([
-      { $match: { conversationId: { $in: ids } } },
+      { $match: { ...messageTenantFilter, $or: messageScopes } },
       {
         $group: {
-          _id: '$conversationId',
+          _id: { conversationId: '$conversationId', user: '$user' },
           count: { $sum: 1 },
           first: { $min: '$createdAt' },
           last: { $max: '$createdAt' },
         },
       },
     ]),
-    CourseWingReceipt.find({ conversationId: { $in: ids } })
-      .select('conversationId messageCount')
+    CourseWingReceipt.find({
+      canvasCourseKey,
+      canvasCourseId,
+      $or: receiptScopes,
+    })
+      .select('conversationId userId messageCount')
       .lean(),
   ]);
-  const statsById = new Map(countRows.map((row) => [row._id, row]));
-  const receiptCounts = new Map(receipts.map((r) => [r.conversationId, r.messageCount]));
+  const statsById = new Map(
+    countRows.map((row) => [conversationKey(row._id.conversationId, row._id.user), row]),
+  );
+  const receiptCounts = new Map(
+    receipts.map((receipt) => [
+      conversationKey(receipt.conversationId, receipt.userId),
+      receipt.messageCount,
+    ]),
+  );
   const stale = conversations.filter((conversation) => {
-    const stats = statsById.get(conversation.conversationId);
-    return (
-      stats != null &&
-      stats.count >= 2 &&
-      receiptCounts.get(conversation.conversationId) !== stats.count
-    );
+    const key = conversationKey(conversation.conversationId, String(conversation.user));
+    const stats = statsById.get(key);
+    return stats != null && stats.count >= 2 && receiptCounts.get(key) !== stats.count;
   });
   const queue = stale.slice(0, limit);
   let generated = 0;
@@ -457,7 +837,9 @@ async function refreshReceipts(canvasCourseId, { limit = MAX_RECEIPTS_PER_REFRES
       try {
         const receipt = await generateReceipt(
           conversation,
-          statsById.get(conversation.conversationId),
+          statsById.get(conversationKey(conversation.conversationId, String(conversation.user))),
+          canvasCourseKey,
+          owners.get(String(conversation.user)),
         );
         if (receipt) {
           generated += 1;
@@ -471,7 +853,11 @@ async function refreshReceipts(canvasCourseId, { limit = MAX_RECEIPTS_PER_REFRES
     }
   });
   await Promise.all(workers);
-  return { generated, staleRemaining: Math.max(0, stale.length - limit), total: ids.length };
+  return {
+    generated,
+    staleRemaining: Math.max(0, stale.length - limit),
+    total: conversations.length,
+  };
 }
 
 async function getUsersById(userIds) {
@@ -531,12 +917,13 @@ function receiptsDigest(receipts, nameById, cap = 60) {
     .join('\n');
 }
 
-async function getPulse(canvasCourseId, receipts, nameById) {
+async function getPulse(canvasCourseKey, canvasCourseId, receipts, nameById) {
   if (!receipts.length) {
     return null;
   }
+  const key = courseScopeKey(canvasCourseKey);
   const version = receiptsVersion(receipts);
-  const cached = pulseCache.get(canvasCourseId);
+  const cached = pulseCache.get(key);
   if (cached && cached.version === version) {
     return cached.pulse;
   }
@@ -564,16 +951,16 @@ Only use what is in the receipts; do not invent numbers.`,
       }
     : null;
   if (pulse) {
-    pulseCache.set(canvasCourseId, { version, pulse });
+    pulseCache.set(key, { version, pulse });
   }
   return pulse;
 }
 
-async function getStudentProfile(canvasCourseId, userId, receipts, name) {
+async function getStudentProfile(canvasCourseKey, canvasCourseId, userId, receipts, name) {
   if (!receipts.length) {
     return null;
   }
-  const key = `${canvasCourseId}:${userId}`;
+  const key = `${courseScopeKey(canvasCourseKey)}:${userId}`;
   const version = receiptsVersion(receipts);
   const cached = profileCache.get(key);
   if (cached && cached.version === version) {
@@ -651,8 +1038,8 @@ You may use the CourseWing course tools to look up course material, assignments,
 }
 
 /** Compact receipts digest appended to teacher-assistant chats each turn. */
-async function buildClassReceiptsCard(canvasCourseId) {
-  const receipts = await CourseWingReceipt.find({ canvasCourseId })
+async function buildClassReceiptsCard(canvasCourseKey, canvasCourseId) {
+  const receipts = await CourseWingReceipt.find({ canvasCourseKey, canvasCourseId })
     .sort({ lastMessageAt: -1 })
     .limit(60)
     .lean();
@@ -678,10 +1065,15 @@ module.exports = {
   buildClassReceiptsCard,
   CONSOLE_LEVELS,
   isTeacherUser,
+  getCanvasCourseScope,
   getTeacherCourseIds,
+  ensureTeacherStorageIndexes,
   getCourseSetting,
   clearCourseSettingCache,
   getCourseAssistance,
+  isActivityVisibleToUser,
+  getVisibleCourseActivity,
+  resolveConversationHelpLevel,
   buildCourseRules,
   refreshReceipts,
   getConversationMessages,

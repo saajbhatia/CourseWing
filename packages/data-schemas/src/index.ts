@@ -54,3 +54,4 @@ export {
 } from './config/tenantContext';
 export type { TenantContext } from './config/tenantContext';
 export { dropSupersededTenantIndexes, dropSupersededPromptGroupIndexes } from './migrations';
+export { applyTenantIsolation } from './models/plugins/tenantIsolation';
