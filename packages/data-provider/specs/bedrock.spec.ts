@@ -5,6 +5,8 @@ import {
   omitsSamplingParameters,
   omitsThinkingByDefault,
   requiresExplicitThinkingDisabled,
+  resolveThinkingOffConfig,
+  isThinkingOffConfig,
   resolveThinkingDisplay,
   bedrockOutputParser,
   bedrockInputParser,
@@ -387,6 +389,30 @@ describe('requiresExplicitThinkingDisabled', () => {
     expect(requiresExplicitThinkingDisabled('claude-fable-5')).toBe(false);
     expect(requiresExplicitThinkingDisabled('claude-mythos-5')).toBe(false);
     expect(requiresExplicitThinkingDisabled('gpt-4o')).toBe(false);
+  });
+});
+
+describe('resolveThinkingOffConfig', () => {
+  test('returns between_tools for Sonnet 5.5+, which rejects disabled', () => {
+    expect(resolveThinkingOffConfig('claude-sonnet-5-5')).toEqual({ type: 'between_tools' });
+    expect(resolveThinkingOffConfig('anthropic.claude-sonnet-5-5')).toEqual({
+      type: 'between_tools',
+    });
+    expect(resolveThinkingOffConfig('claude-sonnet-6')).toEqual({ type: 'between_tools' });
+  });
+
+  test('returns disabled for Sonnet 5 and undefined for disable-by-omission models', () => {
+    expect(resolveThinkingOffConfig('claude-sonnet-5')).toEqual({ type: 'disabled' });
+    expect(resolveThinkingOffConfig('claude-sonnet-5-20260101')).toEqual({ type: 'disabled' });
+    expect(resolveThinkingOffConfig('claude-sonnet-4-6')).toBeUndefined();
+    expect(resolveThinkingOffConfig('claude-opus-4-8')).toBeUndefined();
+  });
+
+  test('isThinkingOffConfig recognizes both off configs', () => {
+    expect(isThinkingOffConfig({ type: 'disabled' })).toBe(true);
+    expect(isThinkingOffConfig({ type: 'between_tools' })).toBe(true);
+    expect(isThinkingOffConfig({ type: 'adaptive' })).toBe(false);
+    expect(isThinkingOffConfig(null)).toBe(false);
   });
 });
 

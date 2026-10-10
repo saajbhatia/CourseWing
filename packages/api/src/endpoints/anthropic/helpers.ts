@@ -8,7 +8,7 @@ import {
   isMythosClassModel,
   resolveThinkingDisplay,
   supportsAdaptiveThinking,
-  requiresExplicitThinkingDisabled,
+  resolveThinkingOffConfig,
 } from 'librechat-data-provider';
 import { matchModelName } from '~/utils/tokens';
 
@@ -103,10 +103,13 @@ function configureReasoning(
   /**
    * Sonnet 5 runs adaptive thinking by default when the `thinking` field is
    * omitted, so honoring a user who turns thinking off requires sending an
-   * explicit disabled config rather than leaving the field unset.
+   * explicit disabled config rather than leaving the field unset; Sonnet 5.5+
+   * rejects `disabled` and takes `between_tools` instead.
    */
-  if (!extendedOptions.thinking && modelName && requiresExplicitThinkingDisabled(modelName)) {
-    updatedOptions.thinking = { type: 'disabled' } as AnthropicClientOptions['thinking'];
+  const thinkingOffConfig =
+    !extendedOptions.thinking && modelName ? resolveThinkingOffConfig(modelName) : undefined;
+  if (thinkingOffConfig) {
+    updatedOptions.thinking = thinkingOffConfig as AnthropicClientOptions['thinking'];
     return updatedOptions;
   }
 

@@ -84,6 +84,7 @@ const {
   isAgentsEndpoint,
   isEphemeralAgentId,
   removeNullishValues,
+  resolveThinkingOffConfig,
   DEFAULT_MEMORY_MAX_INPUT_TOKENS,
 } = require('librechat-data-provider');
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
@@ -2202,6 +2203,13 @@ class AgentClient extends BaseClient {
 
     if (anthropicClientOptions?.defaultHeaders != null && clientOptions.clientOptions == null) {
       clientOptions.clientOptions = anthropicClientOptions;
+    }
+
+    /** Sonnet 5+ runs adaptive thinking when `thinking` is omitted, so titles keep it off explicitly. */
+    const titleThinkingOff =
+      provider === Providers.ANTHROPIC ? resolveThinkingOffConfig(clientOptions.model ?? '') : undefined;
+    if (titleThinkingOff) {
+      clientOptions.thinking = titleThinkingOff;
     }
 
     if (

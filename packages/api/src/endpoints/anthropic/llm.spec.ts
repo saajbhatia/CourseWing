@@ -1249,6 +1249,26 @@ describe('getLLMConfig', () => {
         expect((result.llmConfig.thinking as unknown as { type: string }).type).toBe('disabled');
       });
 
+      it('should send between_tools thinking for Sonnet 5.5 when thinking is off', () => {
+        const result = getLLMConfig('test-key', {
+          modelOptions: { model: 'claude-sonnet-5-5', thinking: false, temperature: 0.4 },
+        });
+
+        expect(result.llmConfig.thinking).toEqual({ type: 'between_tools' });
+        expect(result.llmConfig).not.toHaveProperty('temperature');
+      });
+
+      it('should keep Sonnet 5.5 thinking off when a between_tools config round-trips', () => {
+        const result = getLLMConfig('test-key', {
+          modelOptions: {
+            model: 'claude-sonnet-5-5',
+            thinking: { type: 'between_tools' } as unknown as boolean,
+          },
+        });
+
+        expect(result.llmConfig.thinking).toEqual({ type: 'between_tools' });
+      });
+
       it('should omit sampling parameters for Sonnet 5', () => {
         const result = getLLMConfig('test-key', {
           modelOptions: {

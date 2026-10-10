@@ -4,6 +4,7 @@ import { AnthropicClientOptions } from '@librechat/agents';
 import {
   anthropicSettings,
   omitsSamplingParameters,
+  isThinkingOffConfig,
   removeNullishValues,
   ThinkingDisplay,
   AuthKeys,
@@ -148,12 +149,13 @@ function getLLMConfig(
   /**
    * `thinking` may round-trip as the full Anthropic object rather than a
    * boolean. Normalize to a flag so a persisted `{ type: 'disabled' }` (e.g. a
-   * Sonnet 5 "thinking off" config stored back into `model_parameters`) is
-   * treated as off — a truthy object would otherwise flip thinking back on.
+   * Sonnet 5 "thinking off" config stored back into `model_parameters`) or
+   * `{ type: 'between_tools' }` (Sonnet 5.5) is treated as off — a truthy
+   * object would otherwise flip thinking back on.
    */
   const thinkingFlag =
     typeof persistedThinking === 'object' && persistedThinking != null
-      ? (persistedThinking as { type?: string }).type !== 'disabled'
+      ? !isThinkingOffConfig(persistedThinking)
       : (persistedThinking ?? anthropicSettings.thinking.default);
 
   const systemOptions = {

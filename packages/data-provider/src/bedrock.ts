@@ -191,6 +191,30 @@ export function requiresExplicitThinkingDisabled(model: string): boolean {
   return sonnet != null && sonnet.major >= 5;
 }
 
+export type ThinkingOffConfig = { type: 'disabled' } | { type: 'between_tools' };
+
+/**
+ * The explicit "thinking off" config for models that need one: Sonnet 5.5+
+ * rejects `{ type: 'disabled' }` (400) and takes `{ type: 'between_tools' }`;
+ * Sonnet 5 takes `disabled`. Returns undefined for disable-by-omission models.
+ */
+export function resolveThinkingOffConfig(model: string): ThinkingOffConfig | undefined {
+  if (!requiresExplicitThinkingDisabled(model)) {
+    return undefined;
+  }
+  const sonnet = parseSonnetVersion(model);
+  if (sonnet != null && (sonnet.major > 5 || sonnet.minor >= 5)) {
+    return { type: 'between_tools' };
+  }
+  return { type: 'disabled' };
+}
+
+/** Whether a persisted Anthropic `thinking` object is one of the "off" configs. */
+export function isThinkingOffConfig(thinking: unknown): boolean {
+  const type = (thinking as { type?: string } | null | undefined)?.type;
+  return type === 'disabled' || type === 'between_tools';
+}
+
 /** Checks if a model has a 1M context window (Sonnet 4.6+, Opus 4.6+, Opus 5+, Fable/Mythos) */
 export function supportsContext1m(model: string): boolean {
   const sonnet = parseSonnetVersion(model);
@@ -471,8 +495,9 @@ export const bedrockInputParser = s.tConversationSchema
         if (additionalFields.thinking === false) {
           delete additionalFields.thinkingBudget;
           delete additionalFields.thinkingDisplay;
-          if (requiresExplicitThinkingDisabled(typedData.model as string)) {
-            additionalFields.thinking = { type: 'disabled' };
+          const thinkingOffConfig = resolveThinkingOffConfig(typedData.model as string);
+          if (thinkingOffConfig) {
+            additionalFields.thinking = thinkingOffConfig;
           } else {
             delete additionalFields.thinking;
             /** Disable-by-omission models (Opus 4.7+): drop the persisted

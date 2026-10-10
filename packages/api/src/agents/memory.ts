@@ -10,6 +10,7 @@ import {
   EModelEndpoint,
   PermissionTypes,
   AgentCapabilities,
+  omitsSamplingParameters,
 } from 'librechat-data-provider';
 import type {
   OpenAIClientOptions,
@@ -796,6 +797,16 @@ ${memory ?? 'No existing memories'}`;
       anthropicConfig.temperature != null
     ) {
       delete (finalLLMConfig as Record<string, unknown>).temperature;
+    }
+
+    /** Opus 4.7+, Sonnet 5+ and Fable reject sampling parameters (400), including
+     *  the default memory temperature above. */
+    const memoryModel = (finalLLMConfig as { model?: string }).model;
+    if (memoryModel && omitsSamplingParameters(memoryModel)) {
+      const samplingConfig = finalLLMConfig as Record<string, unknown>;
+      delete samplingConfig.temperature;
+      delete samplingConfig.topP;
+      delete samplingConfig.topK;
     }
 
     /**
